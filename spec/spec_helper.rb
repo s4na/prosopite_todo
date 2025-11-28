@@ -1,6 +1,12 @@
 # frozen_string_literal: true
 
-require "rails"
+# Require active_support first, then railties for Railtie tests
+require "active_support"
+require "active_support/core_ext"
+
+# Load Rails::Railtie for our Railtie to inherit from
+require "rails/railtie"
+
 require "prosopite_todo"
 
 RSpec.configure do |config|
