@@ -16,11 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Ruby 3.0 with Rails 6.1 (minimum supported versions)
-          - ruby: '3.0'
-            rails: '6.1'
-            os: ubuntu-latest
-          # Ruby 3.0 with Rails 7.0
+          # Ruby 3.0 with Rails 7.0 (minimum supported versions)
           - ruby: '3.0'
             rails: '7.0'
             os: ubuntu-latest
