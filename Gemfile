@@ -22,6 +22,11 @@ if rails_version
   else
     gem "sqlite3", "~> 1.4"
   end
+
+  # logger gem compatibility for Rails 6.x on newer Ruby
+  if rails_version.to_f < 7.0
+    gem "logger", "~> 1.5.0"
+  end
 else
   gem "rails"
   gem "sqlite3"
