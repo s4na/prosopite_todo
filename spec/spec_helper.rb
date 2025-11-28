@@ -1,5 +1,10 @@
 # frozen_string_literal: true
 
+# IMPORTANT: Require logger BEFORE active_support to fix Rails 6.x compatibility
+# Rails 6.1 expects Logger constant to exist in a specific way that newer
+# logger gem versions don't provide. Loading logger first resolves this.
+require "logger"
+
 # Require active_support first, then railties for Railtie tests
 require "active_support"
 require "active_support/core_ext"
