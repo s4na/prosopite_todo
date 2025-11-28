@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.authors = ["s4na"]
   spec.email = ["appletea.umauma@gmail.com"]
 
-  spec.summary = "A RuboCop-like TODO file for Prosopite N+1 detection"
-  spec.description = "Allows ignoring known N+1 queries via .prosopite_todo.yaml, similar to RuboCop's TODO functionality"
+  spec.summary = "A RuboCop-like todo file for Prosopite N+1 detection"
+  spec.description = "Allows ignoring known N+1 queries via .prosopite_todo.yaml, similar to RuboCop's todo functionality"
   spec.homepage = "https://github.com/s4na/prosopite_todo"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 2.7.0"
