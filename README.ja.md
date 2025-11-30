@@ -52,6 +52,40 @@ bundle exec rake prosopite_todo:list
 bundle exec rake prosopite_todo:clean
 ```
 
+### RSpec 統合 - 単一テストから N+1 を追加
+
+単一のテストを実行して、検出された N+1 クエリを TODO ファイルに追加したい場合、RSpec 統合ヘルパーを使用できます。
+
+**セットアップ:**
+
+`spec/rails_helper.rb`（または `spec/spec_helper.rb`）に以下を追加してください：
+
+```ruby
+require 'prosopite_todo/rspec'
+```
+
+**使い方:**
+
+`PROSOPITE_TODO_UPDATE` 環境変数を指定してテストを実行します：
+
+```bash
+# 単一のテストファイルを実行
+PROSOPITE_TODO_UPDATE=1 bundle exec rspec spec/models/user_spec.rb
+
+# 特定の行のテストを実行
+PROSOPITE_TODO_UPDATE=1 bundle exec rspec spec/models/user_spec.rb:42
+
+# パターンに一致するテストを実行
+PROSOPITE_TODO_UPDATE=1 bundle exec rspec spec/models/ --pattern "*_spec.rb"
+```
+
+これにより：
+1. 指定されたテストが実行されます
+2. Prosopite 経由で N+1 クエリが自動的に検出されます
+3. テストスイート完了後、新しい N+1 検出が `.prosopite_todo.yaml` に追加されます
+
+これは、他のテストに影響を与えずに、発見した既知の N+1 クエリを TODO ファイルに段階的に追加する際に便利です。
+
 ## 仕組み
 
 1. **フィンガープリント**: 各 N+1 クエリは SQL クエリとコールスタックの位置に基づくフィンガープリントで識別されます

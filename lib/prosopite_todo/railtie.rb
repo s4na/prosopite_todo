@@ -28,8 +28,10 @@ module ProsopiteTodo
           # Filter out ignored notifications
           filtered = ProsopiteTodo::Scanner.filter_notifications(notifications, todo_file)
 
-          # Store original notifications for todo generation
-          ProsopiteTodo.pending_notifications = notifications
+          # Accumulate notifications for todo generation (supports multiple test runs)
+          notifications.each do |query, locations|
+            ProsopiteTodo.add_pending_notification(query: query, locations: locations)
+          end
 
           # Call original callback with filtered notifications if it exists
           original_callback&.call(filtered)
