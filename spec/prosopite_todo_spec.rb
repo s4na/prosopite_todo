@@ -37,6 +37,37 @@ RSpec.describe ProsopiteTodo do
       )
       expect(ProsopiteTodo.pending_notifications).to have_key("SELECT * FROM users")
     end
+
+    it "merges locations for same query" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
+      )
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/controllers/users_controller.rb:20"]]
+      )
+      expect(ProsopiteTodo.pending_notifications["SELECT * FROM users"].length).to eq(2)
+    end
+
+    it "handles single location (not wrapped in array)" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: ["app/models/user.rb:10"]
+      )
+      expect(ProsopiteTodo.pending_notifications["SELECT * FROM users"]).to include("app/models/user.rb:10")
+    end
+  end
+
+  describe ".clear_pending_notifications" do
+    it "clears all pending notifications" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
+      )
+      ProsopiteTodo.clear_pending_notifications
+      expect(ProsopiteTodo.pending_notifications).to eq({})
+    end
   end
 
   describe ".update_todo!" do
@@ -112,6 +143,42 @@ RSpec.describe ProsopiteTodo do
       expect(new_count).to eq(0)
       todo_file = ProsopiteTodo::TodoFile.new(todo_path)
       expect(todo_file.entries.length).to eq(1)
+    end
+
+    it "returns 0 when no pending notifications" do
+      expect(ProsopiteTodo.update_todo!).to eq(0)
+    end
+
+    it "does not output message when no new entries" do
+      expect { ProsopiteTodo.update_todo! }.not_to output.to_stderr
+    end
+
+    it "handles multiple locations for same query" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [
+          ["app/models/user.rb:10"],
+          ["app/controllers/users_controller.rb:20"]
+        ]
+      )
+
+      expect(ProsopiteTodo.update_todo!).to eq(2)
+
+      todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+      expect(todo_file.entries.length).to eq(2)
+    end
+
+    it "handles call stack locations" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10", "app/controllers/users_controller.rb:5"]]
+      )
+
+      ProsopiteTodo.update_todo!
+
+      todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+      entry = todo_file.entries.first
+      expect(entry["location"]).to include("->")
     end
   end
 end
