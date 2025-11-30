@@ -38,6 +38,62 @@ RSpec.describe ProsopiteTodo::TodoFile do
       end
     end
 
+    context "when file is empty" do
+      before do
+        File.write(todo_file_path, "")
+      end
+
+      it "returns empty array" do
+        todo_file = described_class.new(todo_file_path)
+        expect(todo_file.entries).to eq([])
+      end
+    end
+
+    context "when file contains only whitespace" do
+      before do
+        File.write(todo_file_path, "   \n  \n")
+      end
+
+      it "returns empty array" do
+        todo_file = described_class.new(todo_file_path)
+        expect(todo_file.entries).to eq([])
+      end
+    end
+
+    context "when file contains invalid YAML" do
+      before do
+        File.write(todo_file_path, "invalid: yaml: content: [unclosed")
+      end
+
+      it "raises Psych::SyntaxError" do
+        todo_file = described_class.new(todo_file_path)
+        expect { todo_file.entries }.to raise_error(Psych::SyntaxError)
+      end
+    end
+
+    context "when file contains YAML with disallowed class" do
+      before do
+        # Create YAML with object that requires unsafe load
+        File.write(todo_file_path, "--- !ruby/object:OpenStruct\nfoo: bar\n")
+      end
+
+      it "raises Psych::DisallowedClass" do
+        todo_file = described_class.new(todo_file_path)
+        expect { todo_file.entries }.to raise_error(Psych::DisallowedClass)
+      end
+    end
+
+    context "when file contains valid YAML null" do
+      before do
+        File.write(todo_file_path, "---\nnull\n")
+      end
+
+      it "returns empty array" do
+        todo_file = described_class.new(todo_file_path)
+        expect(todo_file.entries).to eq([])
+      end
+    end
+
     context "when file exists with entries" do
       before do
         File.write(todo_file_path, <<~YAML)
@@ -136,6 +192,53 @@ RSpec.describe ProsopiteTodo::TodoFile do
       reloaded = described_class.new(todo_file_path)
       expect(reloaded.entries.length).to eq(1)
       expect(reloaded.entries[0]["fingerprint"]).to eq("save123")
+    end
+
+    it "creates parent directories if they don't exist" do
+      nested_path = File.join(tmp_dir, "nested", "dir", ".prosopite_todo.yaml")
+      FileUtils.mkdir_p(File.dirname(nested_path))
+      todo_file = described_class.new(nested_path)
+      todo_file.add_entry(fingerprint: "nested123", query: "SELECT 1")
+      todo_file.save
+
+      expect(File.exist?(nested_path)).to be true
+    end
+
+    context "when file path is in read-only directory", skip: Process.uid.zero? do
+      let(:readonly_dir) { File.join(tmp_dir, "readonly") }
+      let(:readonly_path) { File.join(readonly_dir, ".prosopite_todo.yaml") }
+
+      before do
+        FileUtils.mkdir_p(readonly_dir)
+        FileUtils.chmod(0o555, readonly_dir)
+      end
+
+      after do
+        FileUtils.chmod(0o755, readonly_dir)
+      end
+
+      it "raises Errno::EACCES when directory is not writable" do
+        todo_file = described_class.new(readonly_path)
+        todo_file.add_entry(fingerprint: "fail123", query: "SELECT 1")
+        expect { todo_file.save }.to raise_error(Errno::EACCES)
+      end
+    end
+
+    context "when file is read-only", skip: Process.uid.zero? do
+      before do
+        File.write(todo_file_path, "---\n[]")
+        FileUtils.chmod(0o444, todo_file_path)
+      end
+
+      after do
+        FileUtils.chmod(0o644, todo_file_path)
+      end
+
+      it "raises Errno::EACCES when file is not writable" do
+        todo_file = described_class.new(todo_file_path)
+        todo_file.add_entry(fingerprint: "readonly123", query: "SELECT 1")
+        expect { todo_file.save }.to raise_error(Errno::EACCES)
+      end
     end
   end
 

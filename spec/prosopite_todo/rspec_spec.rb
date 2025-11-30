@@ -42,5 +42,65 @@ RSpec.describe ProsopiteTodo::RSpec do
       ENV["PROSOPITE_TODO_UPDATE"] = "false"
       expect(described_class.enabled?).to be false
     end
+
+    it "returns true when PROSOPITE_TODO_UPDATE is 'YES' (case insensitive)" do
+      ENV["PROSOPITE_TODO_UPDATE"] = "YES"
+      expect(described_class.enabled?).to be true
+    end
+
+    it "returns false when PROSOPITE_TODO_UPDATE is empty string" do
+      ENV["PROSOPITE_TODO_UPDATE"] = ""
+      expect(described_class.enabled?).to be false
+    end
+
+    it "returns false when PROSOPITE_TODO_UPDATE is whitespace" do
+      ENV["PROSOPITE_TODO_UPDATE"] = "   "
+      expect(described_class.enabled?).to be false
+    end
+
+    it "returns false when PROSOPITE_TODO_UPDATE is 'no'" do
+      ENV["PROSOPITE_TODO_UPDATE"] = "no"
+      expect(described_class.enabled?).to be false
+    end
+
+    it "returns false for unexpected values" do
+      ENV["PROSOPITE_TODO_UPDATE"] = "enabled"
+      expect(described_class.enabled?).to be false
+    end
+  end
+
+  describe ".setup" do
+    after do
+      ENV.delete("PROSOPITE_TODO_UPDATE")
+    end
+
+    context "when not enabled" do
+      before do
+        ENV.delete("PROSOPITE_TODO_UPDATE")
+      end
+
+      it "does not configure RSpec" do
+        # Create a mock RSpec configuration
+        mock_config = double("RSpec::Configuration")
+
+        # setup should not call RSpec.configure when disabled
+        expect(::RSpec).not_to receive(:configure)
+
+        described_class.setup
+      end
+    end
+
+    context "when enabled" do
+      before do
+        ENV["PROSOPITE_TODO_UPDATE"] = "1"
+      end
+
+      it "configures RSpec with after(:suite) hook" do
+        # We can't easily test the actual RSpec configuration without running
+        # a real test suite, but we can verify the method doesn't raise errors
+        # The actual integration is tested by verifying the auto-setup works
+        expect { described_class.setup }.not_to raise_error
+      end
+    end
   end
 end

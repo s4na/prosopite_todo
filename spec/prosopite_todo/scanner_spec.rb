@@ -33,6 +33,79 @@ RSpec.describe ProsopiteTodo::Scanner do
 
       expect(fp1).not_to eq(fp2)
     end
+
+    it "returns 16 character hexadecimal string" do
+      fp = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"])
+      expect(fp).to match(/\A[a-f0-9]{16}\z/)
+    end
+
+    context "with edge case inputs" do
+      it "handles empty query string" do
+        fp = described_class.fingerprint(query: "", location: ["test.rb:1"])
+        expect(fp).to be_a(String)
+        expect(fp.length).to eq(16)
+      end
+
+      it "handles empty location array" do
+        fp = described_class.fingerprint(query: "SELECT 1", location: [])
+        expect(fp).to be_a(String)
+        expect(fp.length).to eq(16)
+      end
+
+      it "handles string location instead of array" do
+        fp = described_class.fingerprint(query: "SELECT 1", location: "test.rb:1")
+        expect(fp).to be_a(String)
+        expect(fp.length).to eq(16)
+      end
+
+      it "handles nil location" do
+        fp = described_class.fingerprint(query: "SELECT 1", location: nil)
+        expect(fp).to be_a(String)
+        expect(fp.length).to eq(16)
+      end
+
+      it "handles very long query string" do
+        long_query = "SELECT " + ("col#{rand(1000)}, " * 1000) + "FROM very_long_table"
+        fp = described_class.fingerprint(query: long_query, location: ["test.rb:1"])
+        expect(fp).to be_a(String)
+        expect(fp.length).to eq(16)
+      end
+
+      it "handles unicode characters in query" do
+        fp = described_class.fingerprint(query: "SELECT * FROM users WHERE name = '日本語'", location: ["test.rb:1"])
+        expect(fp).to be_a(String)
+        expect(fp.length).to eq(16)
+      end
+
+      it "handles special characters in query" do
+        fp = described_class.fingerprint(query: "SELECT * FROM users WHERE data = '{\"key\": \"value\"}'", location: ["test.rb:1"])
+        expect(fp).to be_a(String)
+        expect(fp.length).to eq(16)
+      end
+
+      it "handles newlines in query" do
+        fp = described_class.fingerprint(query: "SELECT *\nFROM users\nWHERE id = 1", location: ["test.rb:1"])
+        expect(fp).to be_a(String)
+        expect(fp.length).to eq(16)
+      end
+
+      it "handles multiple locations (call stack)" do
+        locations = [
+          "app/models/user.rb:10",
+          "app/controllers/users_controller.rb:20",
+          "app/views/users/index.html.erb:5"
+        ]
+        fp = described_class.fingerprint(query: "SELECT 1", location: locations)
+        expect(fp).to be_a(String)
+        expect(fp.length).to eq(16)
+      end
+
+      it "generates different fingerprints for different location order" do
+        fp1 = described_class.fingerprint(query: "SELECT 1", location: ["a.rb:1", "b.rb:2"])
+        fp2 = described_class.fingerprint(query: "SELECT 1", location: ["b.rb:2", "a.rb:1"])
+        expect(fp1).not_to eq(fp2)
+      end
+    end
   end
 
   describe ".filter_notifications" do
@@ -46,6 +119,24 @@ RSpec.describe ProsopiteTodo::Scanner do
 
         result = described_class.filter_notifications(notifications, todo_file)
         expect(result).to eq(notifications)
+      end
+    end
+
+    context "with empty notifications" do
+      it "returns empty hash" do
+        result = described_class.filter_notifications({}, todo_file)
+        expect(result).to eq({})
+      end
+    end
+
+    context "with empty locations array" do
+      it "removes query from result" do
+        notifications = {
+          "SELECT * FROM users" => []
+        }
+
+        result = described_class.filter_notifications(notifications, todo_file)
+        expect(result).to be_empty
       end
     end
 
@@ -128,6 +219,59 @@ RSpec.describe ProsopiteTodo::Scanner do
 
       expected_fp = described_class.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
       expect(todo_file.fingerprints).to include(expected_fp)
+    end
+
+    context "with empty notifications" do
+      it "does not add any entries" do
+        described_class.record_notifications({}, todo_file)
+        expect(todo_file.entries).to be_empty
+      end
+    end
+
+    context "with multiple locations for same query" do
+      it "creates separate entries for each location" do
+        notifications = {
+          "SELECT * FROM users" => [
+            ["app/models/user.rb:10"],
+            ["app/controllers/users_controller.rb:20"]
+          ]
+        }
+
+        described_class.record_notifications(notifications, todo_file)
+
+        expect(todo_file.entries.length).to eq(2)
+        locations = todo_file.entries.map { |e| e["location"] }
+        expect(locations).to include("app/models/user.rb:10")
+        expect(locations).to include("app/controllers/users_controller.rb:20")
+      end
+    end
+
+    context "with call stack locations" do
+      it "normalizes locations to joined string" do
+        notifications = {
+          "SELECT * FROM users" => [
+            ["app/models/user.rb:10", "app/controllers/users_controller.rb:20"]
+          ]
+        }
+
+        described_class.record_notifications(notifications, todo_file)
+
+        entry = todo_file.entries.first
+        expect(entry["location"]).to eq("app/models/user.rb:10 -> app/controllers/users_controller.rb:20")
+      end
+    end
+
+    context "with duplicate notifications" do
+      it "does not add duplicate entries" do
+        notifications = {
+          "SELECT * FROM users" => [["app/models/user.rb:10"]]
+        }
+
+        described_class.record_notifications(notifications, todo_file)
+        described_class.record_notifications(notifications, todo_file)
+
+        expect(todo_file.entries.length).to eq(1)
+      end
     end
   end
 end
