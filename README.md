@@ -52,6 +52,40 @@ To remove entries that are no longer detected (i.e., the N+1 has been fixed):
 bundle exec rake prosopite_todo:clean
 ```
 
+### RSpec Integration - Adding N+1 from a single test
+
+When you want to run a single test and add its detected N+1 queries to the TODO file, you can use the RSpec integration helper.
+
+**Setup:**
+
+Add to your `spec/rails_helper.rb` (or `spec/spec_helper.rb`):
+
+```ruby
+require 'prosopite_todo/rspec'
+```
+
+**Usage:**
+
+Run your test with the `PROSOPITE_TODO_UPDATE` environment variable:
+
+```bash
+# Run a single test file
+PROSOPITE_TODO_UPDATE=1 bundle exec rspec spec/models/user_spec.rb
+
+# Run a specific test line
+PROSOPITE_TODO_UPDATE=1 bundle exec rspec spec/models/user_spec.rb:42
+
+# Run tests matching a pattern
+PROSOPITE_TODO_UPDATE=1 bundle exec rspec spec/models/ --pattern "*_spec.rb"
+```
+
+This will:
+1. Run the specified test(s)
+2. Automatically detect N+1 queries via Prosopite
+3. Add any new N+1 detections to `.prosopite_todo.yaml` after the test suite completes
+
+This is useful for incrementally adding known N+1 queries to your TODO file as you discover them, without affecting other tests.
+
 ## How it works
 
 1. **Fingerprinting**: Each N+1 query is identified by a fingerprint based on the SQL query and its call stack location

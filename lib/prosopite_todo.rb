@@ -32,5 +32,23 @@ module ProsopiteTodo
     def clear_pending_notifications
       @pending_notifications = {}
     end
+
+    # Update TODO file with pending notifications (adds new entries without removing existing ones)
+    # Returns the number of new entries added
+    def update_todo!
+      todo_file = TodoFile.new(todo_file_path)
+      initial_count = todo_file.entries.length
+
+      Scanner.record_notifications(pending_notifications, todo_file)
+      todo_file.save
+
+      new_count = todo_file.entries.length - initial_count
+
+      if new_count.positive?
+        warn "[ProsopiteTodo] Added #{new_count} new N+1 entries to #{todo_file.path}"
+      end
+
+      new_count
+    end
   end
 end
