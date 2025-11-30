@@ -84,6 +84,8 @@ This will:
 2. Automatically detect N+1 queries via Prosopite
 3. Add any new N+1 detections to `.prosopite_todo.yaml` after the test suite completes
 
+**Note:** When running multiple tests, notifications are accumulated from ALL tests before being saved to the TODO file. This means you can run a batch of tests and all detected N+1 queries will be recorded together. After saving, the pending notifications are automatically cleared to prevent accidental duplicates.
+
 This is useful for incrementally adding known N+1 queries to your TODO file as you discover them, without affecting other tests.
 
 ## How it works
