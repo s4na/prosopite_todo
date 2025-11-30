@@ -104,7 +104,7 @@ RSpec.describe ProsopiteTodo do
         locations: [["app/models/user.rb:10"]]
       )
       ProsopiteTodo.update_todo!
-      ProsopiteTodo.clear_pending_notifications
+      # Note: pending notifications are automatically cleared after save
 
       # Add another entry
       ProsopiteTodo.add_pending_notification(
@@ -179,6 +179,54 @@ RSpec.describe ProsopiteTodo do
       todo_file = ProsopiteTodo::TodoFile.new(todo_path)
       entry = todo_file.entries.first
       expect(entry["location"]).to include("->")
+    end
+
+    it "clears pending notifications after successful save" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
+      )
+
+      expect(ProsopiteTodo.pending_notifications).not_to be_empty
+      ProsopiteTodo.update_todo!
+      expect(ProsopiteTodo.pending_notifications).to be_empty
+    end
+
+    it "raises ProsopiteTodo::Error when file write fails" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
+      )
+
+      # Make directory read-only to simulate write failure
+      FileUtils.chmod(0o444, temp_dir)
+
+      expect { ProsopiteTodo.update_todo! }.to raise_error(ProsopiteTodo::Error, /Failed to update TODO file/)
+
+      # Restore permissions for cleanup
+      FileUtils.chmod(0o755, temp_dir)
+    end
+
+    it "preserves pending notifications when save fails" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
+      )
+
+      # Make directory read-only to simulate write failure
+      FileUtils.chmod(0o444, temp_dir)
+
+      begin
+        ProsopiteTodo.update_todo!
+      rescue ProsopiteTodo::Error
+        # expected
+      end
+
+      # Pending notifications should still be there
+      expect(ProsopiteTodo.pending_notifications).not_to be_empty
+
+      # Restore permissions for cleanup
+      FileUtils.chmod(0o755, temp_dir)
     end
   end
 end

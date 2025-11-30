@@ -35,6 +35,7 @@ module ProsopiteTodo
 
     # Update TODO file with pending notifications (adds new entries without removing existing ones)
     # Returns the number of new entries added
+    # Raises ProsopiteTodo::Error if file operations fail
     def update_todo!
       todo_file = TodoFile.new(todo_file_path)
       initial_count = todo_file.entries.length
@@ -48,7 +49,12 @@ module ProsopiteTodo
         warn "[ProsopiteTodo] Added #{new_count} new N+1 entries to #{todo_file.path}"
       end
 
+      # Clear pending notifications after successful save to prevent accidental re-saving
+      clear_pending_notifications
+
       new_count
+    rescue SystemCallError, IOError => e
+      raise Error, "Failed to update TODO file: #{e.message}"
     end
   end
 end
