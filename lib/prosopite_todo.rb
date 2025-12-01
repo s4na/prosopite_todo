@@ -20,7 +20,12 @@ module ProsopiteTodo
     end
 
     def pending_notifications
-      mutex.synchronize { @pending_notifications || {} }
+      mutex.synchronize do
+        return {} unless @pending_notifications
+
+        # Return deep copy to prevent external mutation of internal state
+        @pending_notifications.transform_values(&:dup)
+      end
     end
 
     def pending_notifications=(notifications)
@@ -42,17 +47,20 @@ module ProsopiteTodo
     # Update TODO file with pending notifications (adds new entries without removing existing ones)
     # Returns the number of new entries added
     # Raises ProsopiteTodo::Error if file operations fail
-    # Thread-safe: uses mutex to protect pending_notifications access
+    # Thread-safe: uses atomic swap pattern to prevent data loss
     def update_todo!
-      # Take a snapshot of notifications under mutex, then release for file I/O
-      notifications_snapshot = mutex.synchronize do
-        @pending_notifications&.dup || {}
+      # Atomically swap notifications with empty hash to prevent data loss
+      # Notifications added during file I/O will be collected in the new empty hash
+      notifications_to_save = mutex.synchronize do
+        old = @pending_notifications || {}
+        @pending_notifications = {}
+        old
       end
 
       todo_file = TodoFile.new(todo_file_path)
       initial_count = todo_file.entries.length
 
-      Scanner.record_notifications(notifications_snapshot, todo_file)
+      Scanner.record_notifications(notifications_to_save, todo_file)
       todo_file.save
 
       new_count = todo_file.entries.length - initial_count
@@ -61,11 +69,16 @@ module ProsopiteTodo
         warn "[ProsopiteTodo] Added #{new_count} new N+1 entries to #{todo_file.path}"
       end
 
-      # Clear pending notifications after successful save to prevent accidental re-saving
-      clear_pending_notifications
-
       new_count
     rescue SystemCallError, IOError => e
+      # On failure, restore notifications to prevent data loss
+      mutex.synchronize do
+        notifications_to_save.each do |query, locations|
+          @pending_notifications ||= {}
+          @pending_notifications[query] ||= []
+          @pending_notifications[query].concat(locations)
+        end
+      end
       raise Error, "Failed to update TODO file: #{e.message}"
     end
 

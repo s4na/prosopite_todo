@@ -235,6 +235,35 @@ RSpec.describe ProsopiteTodo do
       ProsopiteTodo.clear_pending_notifications
     end
 
+    it "returns defensive copy that cannot mutate internal state" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
+      )
+
+      # Get notifications
+      notifications = ProsopiteTodo.pending_notifications
+
+      # Try to mutate the returned hash
+      notifications["malicious"] = ["hacked"]
+
+      # Internal state should be unchanged
+      expect(ProsopiteTodo.pending_notifications).not_to have_key("malicious")
+    end
+
+    it "protects against mutation of location arrays" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
+      )
+
+      notifications = ProsopiteTodo.pending_notifications
+      notifications["SELECT * FROM users"] << "malicious_location"
+
+      # Original should be unchanged
+      expect(ProsopiteTodo.pending_notifications["SELECT * FROM users"].length).to eq(1)
+    end
+
     it "handles concurrent add_pending_notification calls without data loss" do
       thread_count = 10
       iterations_per_thread = 100
