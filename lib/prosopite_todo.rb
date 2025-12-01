@@ -8,7 +8,13 @@ require_relative "prosopite_todo/railtie" if defined?(Rails::Railtie)
 module ProsopiteTodo
   class Error < StandardError; end
 
+  # Mutex for thread-safe access to pending_notifications
+  # Required for multi-threaded servers like Puma
+  @mutex = Mutex.new
+
   class << self
+    # Note: Configuration (todo_file_path=) should be done at boot time,
+    # before multi-threaded execution begins. This is standard Ruby practice.
     attr_writer :todo_file_path
 
     def todo_file_path
@@ -16,31 +22,47 @@ module ProsopiteTodo
     end
 
     def pending_notifications
-      @pending_notifications || {}
+      mutex.synchronize do
+        return {} unless @pending_notifications
+
+        # Return deep copy to prevent external mutation of internal state
+        @pending_notifications.transform_values(&:dup)
+      end
     end
 
     def pending_notifications=(notifications)
-      @pending_notifications = notifications
+      mutex.synchronize { @pending_notifications = notifications }
     end
 
     def add_pending_notification(query:, locations:)
-      @pending_notifications ||= {}
-      @pending_notifications[query] ||= []
-      @pending_notifications[query].concat(Array(locations))
+      mutex.synchronize do
+        @pending_notifications ||= {}
+        @pending_notifications[query] ||= []
+        @pending_notifications[query].concat(Array(locations))
+      end
     end
 
     def clear_pending_notifications
-      @pending_notifications = {}
+      mutex.synchronize { @pending_notifications = {} }
     end
 
     # Update TODO file with pending notifications (adds new entries without removing existing ones)
     # Returns the number of new entries added
     # Raises ProsopiteTodo::Error if file operations fail
+    # Thread-safe: uses atomic swap pattern to prevent data loss
     def update_todo!
+      # Atomically swap notifications with empty hash to prevent data loss
+      # Notifications added during file I/O will be collected in the new empty hash
+      notifications_to_save = mutex.synchronize do
+        old = @pending_notifications || {}
+        @pending_notifications = {}
+        old
+      end
+
       todo_file = TodoFile.new(todo_file_path)
       initial_count = todo_file.entries.length
 
-      Scanner.record_notifications(pending_notifications, todo_file)
+      Scanner.record_notifications(notifications_to_save, todo_file)
       todo_file.save
 
       new_count = todo_file.entries.length - initial_count
@@ -49,12 +71,27 @@ module ProsopiteTodo
         warn "[ProsopiteTodo] Added #{new_count} new N+1 entries to #{todo_file.path}"
       end
 
-      # Clear pending notifications after successful save to prevent accidental re-saving
-      clear_pending_notifications
-
       new_count
     rescue SystemCallError, IOError => e
+      # On failure, restore notifications to prevent data loss.
+      # Note: If Scanner.record_notifications succeeded but save failed,
+      # notifications may exist in both TodoFile (in-memory) and here.
+      # This is safe because TodoFile.add_entry uses fingerprint-based
+      # deduplication, so the next save attempt won't create duplicates.
+      mutex.synchronize do
+        notifications_to_save.each do |query, locations|
+          @pending_notifications ||= {}
+          @pending_notifications[query] ||= []
+          @pending_notifications[query].concat(locations)
+        end
+      end
       raise Error, "Failed to update TODO file: #{e.message}"
+    end
+
+    private
+
+    def mutex
+      ProsopiteTodo.instance_variable_get(:@mutex)
     end
   end
 end

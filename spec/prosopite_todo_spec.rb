@@ -229,4 +229,112 @@ RSpec.describe ProsopiteTodo do
       FileUtils.chmod(0o755, temp_dir)
     end
   end
+
+  describe "thread safety" do
+    after do
+      ProsopiteTodo.clear_pending_notifications
+    end
+
+    it "returns defensive copy that cannot mutate internal state" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
+      )
+
+      # Get notifications
+      notifications = ProsopiteTodo.pending_notifications
+
+      # Try to mutate the returned hash
+      notifications["malicious"] = ["hacked"]
+
+      # Internal state should be unchanged
+      expect(ProsopiteTodo.pending_notifications).not_to have_key("malicious")
+    end
+
+    it "protects against mutation of location arrays" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
+      )
+
+      notifications = ProsopiteTodo.pending_notifications
+      notifications["SELECT * FROM users"] << "malicious_location"
+
+      # Original should be unchanged
+      expect(ProsopiteTodo.pending_notifications["SELECT * FROM users"].length).to eq(1)
+    end
+
+    it "handles concurrent add_pending_notification calls without data loss" do
+      thread_count = 10
+      iterations_per_thread = 100
+      threads = []
+
+      thread_count.times do |t|
+        threads << Thread.new do
+          iterations_per_thread.times do |i|
+            ProsopiteTodo.add_pending_notification(
+              query: "SELECT * FROM table_#{t}",
+              locations: [["file_#{t}.rb:#{i}"]]
+            )
+          end
+        end
+      end
+
+      threads.each(&:join)
+
+      # Each thread added 100 locations to its own query
+      notifications = ProsopiteTodo.pending_notifications
+      expect(notifications.keys.length).to eq(thread_count)
+
+      notifications.each do |_query, locations|
+        expect(locations.length).to eq(iterations_per_thread)
+      end
+    end
+
+    it "handles concurrent reads and writes without errors" do
+      errors = []
+      threads = []
+
+      # Writer threads
+      5.times do |t|
+        threads << Thread.new do
+          50.times do |i|
+            ProsopiteTodo.add_pending_notification(
+              query: "SELECT * FROM users_#{t}",
+              locations: [["app/models/user.rb:#{i}"]]
+            )
+          end
+        rescue StandardError => e
+          errors << e
+        end
+      end
+
+      # Reader threads
+      5.times do
+        threads << Thread.new do
+          50.times do
+            ProsopiteTodo.pending_notifications
+          end
+        rescue StandardError => e
+          errors << e
+        end
+      end
+
+      # Clear threads
+      2.times do
+        threads << Thread.new do
+          10.times do
+            sleep(0.001)
+            ProsopiteTodo.clear_pending_notifications
+          end
+        rescue StandardError => e
+          errors << e
+        end
+      end
+
+      threads.each(&:join)
+
+      expect(errors).to be_empty
+    end
+  end
 end
