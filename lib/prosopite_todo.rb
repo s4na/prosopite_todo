@@ -13,6 +13,8 @@ module ProsopiteTodo
   @mutex = Mutex.new
 
   class << self
+    # Note: Configuration (todo_file_path=) should be done at boot time,
+    # before multi-threaded execution begins. This is standard Ruby practice.
     attr_writer :todo_file_path
 
     def todo_file_path
@@ -71,7 +73,11 @@ module ProsopiteTodo
 
       new_count
     rescue SystemCallError, IOError => e
-      # On failure, restore notifications to prevent data loss
+      # On failure, restore notifications to prevent data loss.
+      # Note: If Scanner.record_notifications succeeded but save failed,
+      # notifications may exist in both TodoFile (in-memory) and here.
+      # This is safe because TodoFile.add_entry uses fingerprint-based
+      # deduplication, so the next save attempt won't create duplicates.
       mutex.synchronize do
         notifications_to_save.each do |query, locations|
           @pending_notifications ||= {}
