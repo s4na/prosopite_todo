@@ -194,6 +194,57 @@ RSpec.describe ProsopiteTodo::Scanner do
         expect(result["SELECT * FROM users"]).to eq([["app/controllers/users_controller.rb:5"]])
       end
     end
+
+    context "with Prosopite format notifications" do
+      # Prosopite sends notifications as { [query1, query2, ...] => [frame1, frame2, ...] }
+      # where the key is an array of similar queries and the value is a flat array of stack frames
+
+      it "handles Prosopite format with array of queries as key" do
+        notifications = {
+          ["SELECT * FROM users WHERE id = ?", "SELECT * FROM users WHERE id = ?"] => [
+            "app/models/user.rb:10",
+            "app/controllers/users_controller.rb:20",
+            "app/views/users/show.html.erb:5"
+          ]
+        }
+
+        result = described_class.filter_notifications(notifications, todo_file)
+        expect(result.keys.first).to eq(["SELECT * FROM users WHERE id = ?", "SELECT * FROM users WHERE id = ?"])
+      end
+
+      it "filters Prosopite format when fingerprint matches" do
+        call_stack = [
+          "app/models/user.rb:10",
+          "app/controllers/users_controller.rb:20"
+        ]
+        fp = described_class.fingerprint(query: "SELECT * FROM users WHERE id = ?", location: call_stack)
+        todo_file.add_entry(
+          fingerprint: fp,
+          query: "SELECT * FROM users WHERE id = ?",
+          location: call_stack.join(" -> ")
+        )
+        todo_file.save
+
+        notifications = {
+          ["SELECT * FROM users WHERE id = ?"] => call_stack
+        }
+
+        result = described_class.filter_notifications(notifications, todo_file)
+        expect(result).to be_empty
+      end
+
+      it "keeps Prosopite format when fingerprint does not match" do
+        notifications = {
+          ["SELECT * FROM posts WHERE id = ?"] => [
+            "app/models/post.rb:15",
+            "app/controllers/posts_controller.rb:25"
+          ]
+        }
+
+        result = described_class.filter_notifications(notifications, todo_file)
+        expect(result.keys.first).to eq(["SELECT * FROM posts WHERE id = ?"])
+      end
+    end
   end
 
   describe ".record_notifications" do

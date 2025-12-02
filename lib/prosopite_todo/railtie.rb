@@ -98,8 +98,13 @@ module ProsopiteTodo
           return unless tc[:prosopite_notifications]
 
           # Accumulate notifications for todo generation
-          tc[:prosopite_notifications].each do |query, locations|
-            ProsopiteTodo.add_pending_notification(query: query, locations: Array(locations))
+          # Prosopite notifications structure:
+          #   key: array of similar N+1 queries (use first as representative)
+          #   value: flat array of stack frames (single call stack)
+          tc[:prosopite_notifications].each do |queries, call_stack|
+            query = queries.is_a?(Array) ? queries.first : queries
+            # Wrap call_stack as a single location entry (array of arrays)
+            ProsopiteTodo.add_pending_notification(query: query, locations: [Array(call_stack)])
           end
 
           # Filter out ignored notifications
