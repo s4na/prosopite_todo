@@ -18,6 +18,9 @@ module ProsopiteTodo
     class << self
       def setup_prosopite_integration
         return unless defined?(Prosopite)
+        return if @prosopite_integration_completed
+
+        @prosopite_integration_completed = true
 
         todo_file = ProsopiteTodo::TodoFile.new
 
@@ -31,6 +34,9 @@ module ProsopiteTodo
 
       def add_sqlite_fingerprint_support
         return unless defined?(Prosopite)
+        return if @sqlite_fingerprint_support_added
+
+        @sqlite_fingerprint_support_added = true
 
         Prosopite.singleton_class.prepend(SqliteFingerprintSupport)
       end
@@ -40,8 +46,8 @@ module ProsopiteTodo
     # Prosopite only supports MySQL and PostgreSQL by default
     module SqliteFingerprintSupport
       def fingerprint(query)
-        db_adapter = ActiveRecord::Base.connection_db_config.adapter
-        if db_adapter.include?("sqlite")
+        db_adapter = ActiveRecord::Base.connection_db_config.adapter rescue nil
+        if db_adapter.to_s.start_with?("sqlite")
           sqlite_fingerprint(query)
         else
           super
