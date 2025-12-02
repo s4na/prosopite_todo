@@ -55,7 +55,7 @@ module ProsopiteTodo
     def load_entries
       return [] unless File.exist?(@path)
 
-      content = YAML.safe_load(File.read(@path), permitted_classes: [Time])
+      content = YAML.safe_load(File.read(@path), permitted_classes: [Time], aliases: true)
       content || []
     end
   end
