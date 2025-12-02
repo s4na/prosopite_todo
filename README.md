@@ -7,7 +7,7 @@ A RuboCop-like TODO file for [Prosopite](https://github.com/charkost/prosopite) 
 Add this line to your application's Gemfile:
 
 ```ruby
-gem 'prosopite_todo'
+gem 'prosopite_todo', github: 's4na/prosopite_todo'
 ```
 
 And then execute:
