@@ -81,6 +81,53 @@ Add to your `spec/rails_helper.rb` (or `spec/spec_helper.rb`):
 require 'prosopite_todo/rspec'
 ```
 
+**Important:** The `prosopite_todo/rspec` helper only saves detected N+1 queries to the TODO file after the test suite completes. You must also enable `Prosopite.scan` to actually detect N+1 queries. Here are two approaches:
+
+**Option 1: Enable scanning for all tests when updating TODO (recommended)**
+
+```ruby
+# spec/rails_helper.rb
+require 'prosopite_todo/rspec'
+
+RSpec.configure do |config|
+  config.around(:example) do |example|
+    if ENV['PROSOPITE_TODO_UPDATE']
+      original_raise = Prosopite.raise?
+      Prosopite.raise = false
+      Prosopite.scan do
+        example.run
+      end
+      Prosopite.raise = original_raise
+    else
+      example.run
+    end
+  end
+end
+```
+
+**Option 2: Enable scanning for specific tests**
+
+```ruby
+# spec/rails_helper.rb
+require 'prosopite_todo/rspec'
+
+RSpec.configure do |config|
+  config.around(:example, prosopite_scan: true) do |example|
+    Prosopite.scan do
+      example.run
+    end
+  end
+end
+```
+
+Then add the `prosopite_scan: true` tag to individual tests:
+
+```ruby
+it "loads user posts", prosopite_scan: true do
+  # your test code
+end
+```
+
 **Usage:**
 
 Run your test with the `PROSOPITE_TODO_UPDATE` environment variable:
