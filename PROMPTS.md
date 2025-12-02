@@ -9,6 +9,7 @@
 4. カレントリポジトリのgemを参照するよう設定
 5. テスト実行時にN+1が検出され、prosopite_todo ファイルが生成されることを確認
 6. 出力内容が想定通りであることを確認
+7. 確認が終了したら、 demo_app は削除
 
 問題があれば、https://github.com/s4na/prosopite_todo/issuesにイシューを作成してください。
 ```
