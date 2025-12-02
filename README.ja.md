@@ -7,7 +7,7 @@
 Gemfile に以下を追加してください：
 
 ```ruby
-gem 'prosopite_todo'
+gem 'prosopite_todo', github: 's4na/prosopite_todo'
 ```
 
 その後、以下を実行します：
