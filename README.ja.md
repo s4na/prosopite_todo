@@ -81,6 +81,53 @@ bundle exec rake prosopite_todo:clean
 require 'prosopite_todo/rspec'
 ```
 
+**重要:** `prosopite_todo/rspec` ヘルパーは、テストスイート完了後に検出された N+1 クエリを TODO ファイルに保存するだけです。実際に N+1 クエリを検出するには、`Prosopite.scan` も有効にする必要があります。以下の2つの方法があります：
+
+**方法1: TODO 更新時にすべてのテストでスキャンを有効にする（推奨）**
+
+```ruby
+# spec/rails_helper.rb
+require 'prosopite_todo/rspec'
+
+RSpec.configure do |config|
+  config.around(:example) do |example|
+    if ENV['PROSOPITE_TODO_UPDATE']
+      original_raise = Prosopite.raise?
+      Prosopite.raise = false
+      Prosopite.scan do
+        example.run
+      end
+      Prosopite.raise = original_raise
+    else
+      example.run
+    end
+  end
+end
+```
+
+**方法2: 特定のテストでスキャンを有効にする**
+
+```ruby
+# spec/rails_helper.rb
+require 'prosopite_todo/rspec'
+
+RSpec.configure do |config|
+  config.around(:example, prosopite_scan: true) do |example|
+    Prosopite.scan do
+      example.run
+    end
+  end
+end
+```
+
+その後、個々のテストに `prosopite_scan: true` タグを追加します：
+
+```ruby
+it "loads user posts", prosopite_scan: true do
+  # テストコード
+end
+```
+
 **使い方:**
 
 `PROSOPITE_TODO_UPDATE` 環境変数を指定してテストを実行します：
