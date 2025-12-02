@@ -16,6 +16,27 @@ And then execute:
 bundle install
 ```
 
+### Specifying a version
+
+When installing from GitHub, the gem version is determined by `lib/prosopite_todo/version.rb` in the repository. To pin to a specific version, you can use git tags, branches, or commit SHAs:
+
+```ruby
+# Pin to a specific tag
+gem 'prosopite_todo', github: 's4na/prosopite_todo', tag: 'v0.1.0'
+
+# Pin to a specific branch
+gem 'prosopite_todo', github: 's4na/prosopite_todo', branch: 'main'
+
+# Pin to a specific commit
+gem 'prosopite_todo', github: 's4na/prosopite_todo', ref: 'abc1234'
+```
+
+**Note:** This gem is not yet published to RubyGems. Once published, you will be able to install it with:
+
+```ruby
+gem 'prosopite_todo', '~> 0.1'
+```
+
 ## Usage
 
 ### Generating a TODO file
@@ -142,6 +163,22 @@ To run the integration tests:
 ```bash
 ruby spec/integration/n_plus_one_spec.rb
 ```
+
+## Releasing
+
+To release a new version:
+
+1. Update the version number in `lib/prosopite_todo/version.rb`
+2. Commit the version change: `git commit -am "Bump version to x.x.x"`
+3. Create and push a tag: `git tag vx.x.x && git push origin vx.x.x`
+
+The GitHub Actions workflow will automatically:
+- Verify the tag version matches the gem version
+- Run the test suite
+- Build and publish the gem to RubyGems
+- Create a GitHub Release with release notes
+
+**Note:** You need to set the `RUBYGEMS_API_KEY` secret in your GitHub repository settings.
 
 ## License
 

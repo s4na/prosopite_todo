@@ -16,6 +16,27 @@ gem 'prosopite_todo', github: 's4na/prosopite_todo'
 bundle install
 ```
 
+### バージョンの指定
+
+GitHub からインストールする場合、gem のバージョンはリポジトリ内の `lib/prosopite_todo/version.rb` によって決まります。特定のバージョンに固定するには、git タグ、ブランチ、またはコミット SHA を使用できます：
+
+```ruby
+# 特定のタグに固定
+gem 'prosopite_todo', github: 's4na/prosopite_todo', tag: 'v0.1.0'
+
+# 特定のブランチに固定
+gem 'prosopite_todo', github: 's4na/prosopite_todo', branch: 'main'
+
+# 特定のコミットに固定
+gem 'prosopite_todo', github: 's4na/prosopite_todo', ref: 'abc1234'
+```
+
+**注意:** この gem はまだ RubyGems に公開されていません。公開後は以下のようにインストールできるようになります：
+
+```ruby
+gem 'prosopite_todo', '~> 0.1'
+```
+
 ## 使い方
 
 ### TODO ファイルの生成
@@ -141,6 +162,22 @@ todo_file.save
 bundle install
 bundle exec rspec
 ```
+
+## リリース
+
+新しいバージョンをリリースするには：
+
+1. `lib/prosopite_todo/version.rb` のバージョン番号を更新します
+2. バージョン変更をコミットします: `git commit -am "Bump version to x.x.x"`
+3. タグを作成してプッシュします: `git tag vx.x.x && git push origin vx.x.x`
+
+GitHub Actions ワークフローが自動的に以下を実行します：
+- タグのバージョンと gem のバージョンが一致することを確認
+- テストスイートを実行
+- gem をビルドして RubyGems に公開
+- リリースノート付きの GitHub Release を作成
+
+**注意:** GitHub リポジトリの設定で `RUBYGEMS_API_KEY` シークレットを設定する必要があります。
 
 ## ライセンス
 

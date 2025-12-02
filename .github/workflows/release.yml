@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Verify version matches
+        run: |
+          GEM_VERSION=$(ruby -r ./lib/prosopite_todo/version.rb -e "puts ProsopiteTodo::VERSION")
+          if [ "$GEM_VERSION" != "${{ steps.version.outputs.VERSION }}" ]; then
+            echo "Tag version (${{ steps.version.outputs.VERSION }}) does not match gem version ($GEM_VERSION)"
+            exit 1
+          fi
+
+      - name: Run tests
+        run: bundle exec rspec spec/prosopite_todo/ spec/prosopite_todo_spec.rb
+
+      - name: Build gem
+        run: gem build prosopite_todo.gemspec
+
+      - name: Publish to RubyGems
+        env:
+          RUBYGEMS_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+        run: |
+          mkdir -p ~/.gem
+          echo -e "---\n:rubygems_api_key: ${RUBYGEMS_API_KEY}" > ~/.gem/credentials
+          chmod 0600 ~/.gem/credentials
+          gem push prosopite_todo-${{ steps.version.outputs.VERSION }}.gem
+          rm ~/.gem/credentials
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: prosopite_todo-${{ steps.version.outputs.VERSION }}.gem
+          generate_release_notes: true
