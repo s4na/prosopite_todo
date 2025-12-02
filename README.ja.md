@@ -16,6 +16,23 @@ gem 'prosopite_todo', github: 's4na/prosopite_todo'
 bundle install
 ```
 
+### バージョンの指定
+
+GitHub からインストールする場合、gem のバージョンはリポジトリ内の `lib/prosopite_todo/version.rb` によって決まります。特定のバージョンに固定するには、git タグ、ブランチ、またはコミット SHA を使用できます：
+
+```ruby
+# 特定のタグに固定（推奨）
+gem 'prosopite_todo', github: 's4na/prosopite_todo', tag: 'v0.1.0'
+
+# 特定のブランチに固定
+gem 'prosopite_todo', github: 's4na/prosopite_todo', branch: 'main'
+
+# 特定のコミットに固定
+gem 'prosopite_todo', github: 's4na/prosopite_todo', ref: 'abc1234'
+```
+
+バージョンタグは PR が main にマージされると自動的に作成されます。
+
 ## 使い方
 
 ### TODO ファイルの生成
@@ -141,6 +158,16 @@ todo_file.save
 bundle install
 bundle exec rspec
 ```
+
+## リリース
+
+リリースは GitHub Actions で自動化されています。PR が main にマージされると：
+
+1. `lib/prosopite_todo/version.rb` のパッチバージョンが自動的にインクリメントされます
+2. 新しいバージョンタグ（例: `v0.1.1`）が作成されプッシュされます
+3. 自動生成されたリリースノート付きの GitHub Release が作成されます
+
+メジャーまたはマイナーバージョンのアップデートの場合は、マージ前に `lib/prosopite_todo/version.rb` を手動で更新してください。
 
 ## ライセンス
 
