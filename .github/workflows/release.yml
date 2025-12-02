@@ -1,12 +1,13 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 jobs:
   release:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -14,39 +15,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
-          bundler-cache: true
 
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Verify version matches
+      - name: Configure git
         run: |
-          GEM_VERSION=$(ruby -r ./lib/prosopite_todo/version.rb -e "puts ProsopiteTodo::VERSION")
-          if [ "$GEM_VERSION" != "${{ steps.version.outputs.VERSION }}" ]; then
-            echo "Tag version (${{ steps.version.outputs.VERSION }}) does not match gem version ($GEM_VERSION)"
-            exit 1
-          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Run tests
-        run: bundle exec rspec spec/prosopite_todo/ spec/prosopite_todo_spec.rb
+      - name: Bump patch version
+        id: bump
+        run: |
+          VERSION_FILE="lib/prosopite_todo/version.rb"
+          CURRENT_VERSION=$(ruby -r ./$VERSION_FILE -e "puts ProsopiteTodo::VERSION")
 
-      - name: Build gem
-        run: gem build prosopite_todo.gemspec
+          # Parse version components
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
 
-      - name: Publish to RubyGems
-        env:
-          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
-        run: gem push prosopite_todo-${{ steps.version.outputs.VERSION }}.gem
+          # Update version file
+          sed -i "s/VERSION = \"$CURRENT_VERSION\"/VERSION = \"$NEW_VERSION\"/" $VERSION_FILE
+
+          echo "old_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Commit and tag
+        run: |
+          git add lib/prosopite_todo/version.rb
+          git commit -m "Bump version to ${{ steps.bump.outputs.new_version }}"
+          git tag "v${{ steps.bump.outputs.new_version }}"
+          git push origin main --tags
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: prosopite_todo-${{ steps.version.outputs.VERSION }}.gem
+          tag_name: v${{ steps.bump.outputs.new_version }}
+          name: v${{ steps.bump.outputs.new_version }}
           generate_release_notes: true

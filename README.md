@@ -21,7 +21,7 @@ bundle install
 When installing from GitHub, the gem version is determined by `lib/prosopite_todo/version.rb` in the repository. To pin to a specific version, you can use git tags, branches, or commit SHAs:
 
 ```ruby
-# Pin to a specific tag
+# Pin to a specific tag (recommended)
 gem 'prosopite_todo', github: 's4na/prosopite_todo', tag: 'v0.1.0'
 
 # Pin to a specific branch
@@ -31,11 +31,7 @@ gem 'prosopite_todo', github: 's4na/prosopite_todo', branch: 'main'
 gem 'prosopite_todo', github: 's4na/prosopite_todo', ref: 'abc1234'
 ```
 
-**Note:** This gem is not yet published to RubyGems. Once published, you will be able to install it with:
-
-```ruby
-gem 'prosopite_todo', '~> 0.1'
-```
+Version tags are automatically created when PRs are merged to main.
 
 ## Usage
 
@@ -166,19 +162,13 @@ ruby spec/integration/n_plus_one_spec.rb
 
 ## Releasing
 
-To release a new version:
+Releases are automated via GitHub Actions. When a PR is merged to main:
 
-1. Update the version number in `lib/prosopite_todo/version.rb`
-2. Commit the version change: `git commit -am "Bump version to x.x.x"`
-3. Create and push a tag: `git tag vx.x.x && git push origin vx.x.x`
+1. The patch version is automatically incremented in `lib/prosopite_todo/version.rb`
+2. A new version tag (e.g., `v0.1.1`) is created and pushed
+3. A GitHub Release is created with auto-generated release notes
 
-The GitHub Actions workflow will automatically:
-- Verify the tag version matches the gem version
-- Run the test suite
-- Build and publish the gem to RubyGems
-- Create a GitHub Release with release notes
-
-**Note:** You need to set the `RUBYGEMS_API_KEY` secret in your GitHub repository settings.
+For major or minor version bumps, manually update `lib/prosopite_todo/version.rb` before merging.
 
 ## License
 
