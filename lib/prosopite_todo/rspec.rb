@@ -11,8 +11,8 @@ module ProsopiteTodo
   # Then run:
   #   PROSOPITE_TODO_UPDATE=1 bundle exec rspec spec/models/user_spec.rb
   #
-  # To also remove resolved N+1 entries:
-  #   PROSOPITE_TODO_UPDATE=1 PROSOPITE_TODO_CLEAN=1 bundle exec rspec
+  # To disable auto-removal of resolved N+1 entries:
+  #   PROSOPITE_TODO_UPDATE=1 PROSOPITE_TODO_CLEAN=0 bundle exec rspec
   #
   module RSpec
     class << self
@@ -32,7 +32,8 @@ module ProsopiteTodo
       end
 
       def clean_enabled?
-        %w[1 true yes].include?(ENV.fetch("PROSOPITE_TODO_CLEAN", nil)&.downcase)
+        # Default to true unless explicitly disabled
+        !%w[0 false no].include?(ENV.fetch("PROSOPITE_TODO_CLEAN", nil)&.downcase)
       end
     end
   end

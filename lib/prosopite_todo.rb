@@ -48,11 +48,11 @@ module ProsopiteTodo
     end
 
     # Update TODO file with pending notifications
-    # @param clean [Boolean] if true, also removes entries that are no longer detected
+    # @param clean [Boolean] if true, also removes entries that are no longer detected (default: true)
     # Returns a hash with :added and :removed counts
     # Raises ProsopiteTodo::Error if file operations fail
     # Thread-safe: uses atomic swap pattern to prevent data loss
-    def update_todo!(clean: false)
+    def update_todo!(clean: true)
       # Atomically swap notifications with empty hash to prevent data loss
       # Notifications added during file I/O will be collected in the new empty hash
       notifications_to_save = mutex.synchronize do

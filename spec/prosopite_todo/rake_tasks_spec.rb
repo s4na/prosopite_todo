@@ -73,7 +73,7 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
   end
 
   describe ".update" do
-    it "adds new notifications while keeping existing ones" do
+    it "removes old entries and adds new ones by default (clean: true)" do
       # Create existing entry
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
       todo_file.add_entry(
@@ -89,6 +89,30 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
       )
 
       described_class.update(output: output)
+
+      expect(output.string).to include("Updated")
+      expect(output.string).to include("removed 1")
+      reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
+      expect(reloaded.entries.length).to eq(1)
+      expect(reloaded.entries.first["query"]).to eq("SELECT * FROM users")
+    end
+
+    it "keeps existing entries when clean: false" do
+      # Create existing entry
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+      todo_file.add_entry(
+        fingerprint: "existing123",
+        query: "SELECT * FROM posts",
+        location: "app/models/post.rb:5"
+      )
+      todo_file.save
+
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
+      )
+
+      described_class.update(output: output, clean: false)
 
       expect(output.string).to include("Updated")
       reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
@@ -179,9 +203,9 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
         ENV.delete("PROSOPITE_TODO_CLEAN")
       end
 
-      it "returns false when PROSOPITE_TODO_CLEAN is not set" do
+      it "returns true when PROSOPITE_TODO_CLEAN is not set (default)" do
         ENV.delete("PROSOPITE_TODO_CLEAN")
-        expect(described_class.clean_enabled?).to be false
+        expect(described_class.clean_enabled?).to be true
       end
 
       it "returns true when PROSOPITE_TODO_CLEAN is '1'" do
@@ -201,6 +225,16 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
 
       it "returns false when PROSOPITE_TODO_CLEAN is '0'" do
         ENV["PROSOPITE_TODO_CLEAN"] = "0"
+        expect(described_class.clean_enabled?).to be false
+      end
+
+      it "returns false when PROSOPITE_TODO_CLEAN is 'false'" do
+        ENV["PROSOPITE_TODO_CLEAN"] = "false"
+        expect(described_class.clean_enabled?).to be false
+      end
+
+      it "returns false when PROSOPITE_TODO_CLEAN is 'no'" do
+        ENV["PROSOPITE_TODO_CLEAN"] = "no"
         expect(described_class.clean_enabled?).to be false
       end
     end

@@ -102,7 +102,7 @@ RSpec.describe ProsopiteTodo do
       expect(todo_file.entries.first["query"]).to eq("SELECT * FROM users WHERE id = ?")
     end
 
-    it "adds new entries without removing existing ones" do
+    it "adds new entries and removes old ones by default (clean: true)" do
       # Create initial entry
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM users WHERE id = ?",
@@ -111,12 +111,32 @@ RSpec.describe ProsopiteTodo do
       ProsopiteTodo.update_todo!
       # Note: pending notifications are automatically cleared after save
 
-      # Add another entry
+      # Add another entry (first one will be removed because clean: true is default)
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM posts WHERE user_id = ?",
         locations: [["app/models/post.rb:20"]]
       )
       ProsopiteTodo.update_todo!
+
+      todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+      expect(todo_file.entries.length).to eq(1)
+      expect(todo_file.entries.first["query"]).to eq("SELECT * FROM posts WHERE user_id = ?")
+    end
+
+    it "keeps existing entries when clean: false" do
+      # Create initial entry
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users WHERE id = ?",
+        locations: [["app/models/user.rb:10"]]
+      )
+      ProsopiteTodo.update_todo!(clean: false)
+
+      # Add another entry
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM posts WHERE user_id = ?",
+        locations: [["app/models/post.rb:20"]]
+      )
+      ProsopiteTodo.update_todo!(clean: false)
 
       todo_file = ProsopiteTodo::TodoFile.new(todo_path)
       expect(todo_file.entries.length).to eq(2)

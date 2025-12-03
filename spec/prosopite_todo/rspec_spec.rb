@@ -109,9 +109,9 @@ RSpec.describe ProsopiteTodo::RSpec do
       ENV.delete("PROSOPITE_TODO_CLEAN")
     end
 
-    it "returns false when PROSOPITE_TODO_CLEAN is not set" do
+    it "returns true when PROSOPITE_TODO_CLEAN is not set (default)" do
       ENV.delete("PROSOPITE_TODO_CLEAN")
-      expect(described_class.clean_enabled?).to be false
+      expect(described_class.clean_enabled?).to be true
     end
 
     it "returns true when PROSOPITE_TODO_CLEAN is '1'" do
@@ -136,6 +136,11 @@ RSpec.describe ProsopiteTodo::RSpec do
 
     it "returns false when PROSOPITE_TODO_CLEAN is 'false'" do
       ENV["PROSOPITE_TODO_CLEAN"] = "false"
+      expect(described_class.clean_enabled?).to be false
+    end
+
+    it "returns false when PROSOPITE_TODO_CLEAN is 'no'" do
+      ENV["PROSOPITE_TODO_CLEAN"] = "no"
       expect(described_class.clean_enabled?).to be false
     end
   end

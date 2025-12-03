@@ -41,7 +41,8 @@ module ProsopiteTodo
       end
 
       def clean_enabled?
-        %w[1 true yes].include?(ENV.fetch("PROSOPITE_TODO_CLEAN", nil)&.downcase)
+        # Default to true unless explicitly disabled
+        !%w[0 false no].include?(ENV.fetch("PROSOPITE_TODO_CLEAN", nil)&.downcase)
       end
 
       def list(output: $stdout)
