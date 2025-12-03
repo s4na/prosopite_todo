@@ -48,6 +48,31 @@ RSpec.describe ProsopiteTodo::Scanner do
       # at the boundary between letter and digit
       expect(described_class.normalize_query(query)).to eq("SELECT user_id, name FROM users123")
     end
+
+    it "replaces string literals as a whole" do
+      query = "SELECT * FROM logs WHERE ip_address = '192.168.1.1'"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM logs WHERE ip_address = ?")
+    end
+
+    it "does not normalize numbers inside string literals" do
+      query = "SELECT * FROM users WHERE name = 'User 123'"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM users WHERE name = ?")
+    end
+
+    it "preserves PostgreSQL-style placeholders" do
+      query = "SELECT * FROM users WHERE id = $1 AND status = $2"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM users WHERE id = $1 AND status = $2")
+    end
+
+    it "handles mixed string literals and numeric values" do
+      query = "SELECT * FROM users WHERE id = 123 AND status = 'active'"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM users WHERE id = ? AND status = ?")
+    end
+
+    it "handles multiple string literals" do
+      query = "SELECT * FROM logs WHERE message = 'Error 404' AND path = '/page/123'"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM logs WHERE message = ? AND path = ?")
+    end
   end
 
   describe ".fingerprint" do

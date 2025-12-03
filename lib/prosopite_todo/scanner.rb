@@ -14,16 +14,30 @@ module ProsopiteTodo
         Digest::SHA256.hexdigest(content)[0, 16]
       end
 
-      # Normalize query by replacing numeric literals with placeholders
+      # Normalize query by replacing literals with placeholders
       # This reduces duplicate entries for the same N+1 pattern with different IDs
+      #
+      # Strategy:
+      # 1. Replace string literals first to avoid normalizing numbers inside strings
+      #    e.g., "WHERE ip = '192.168.1.1'" -> "WHERE ip = ?"
+      # 2. Replace numeric values while preserving PostgreSQL placeholders ($1, $2)
+      #    e.g., "WHERE id = 123" -> "WHERE id = ?"
+      #    but  "WHERE id = $1" -> "WHERE id = $1" (unchanged)
+      #
       # @param query [String] the SQL query
       # @return [String] normalized query with numbers replaced by ?
       def normalize_query(query)
         return query if query.nil? || query.empty?
 
-        # Replace numeric literals (integers and floats) with ?
-        # Handles: WHERE id = 123, IN (1, 2, 3), LIMIT 10, etc.
-        query.gsub(/\b\d+(\.\d+)?\b/, "?")
+        result = query.dup
+
+        # Replace string literals (single quotes) as a whole
+        result.gsub!(/'[^']*'/, "?")
+
+        # Replace numeric literals but preserve $N style placeholders
+        result.gsub!(/(?<!\$)\b\d+(\.\d+)?\b/, "?")
+
+        result
       end
 
       # Filter notifications based on TODO file
