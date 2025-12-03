@@ -1,36 +1,38 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "rake"
 require "tempfile"
 require "fileutils"
 
-RSpec.describe "ProsopiteTodo Rake Tasks" do
+# Load the task helpers module for testing
+require_relative "../../lib/prosopite_todo/task_helpers"
+
+RSpec.describe ProsopiteTodo::TaskHelpers do
   let(:tmp_dir) { Dir.mktmpdir }
   let(:todo_file_path) { File.join(tmp_dir, ".prosopite_todo.yaml") }
+  let(:output) { StringIO.new }
 
   before do
-    Rake.application = Rake::Application.new
-    load File.expand_path("../../lib/prosopite_todo/tasks.rb", __dir__)
-
-    allow(ProsopiteTodo).to receive(:todo_file_path).and_return(todo_file_path)
-    allow(ProsopiteTodo).to receive(:pending_notifications).and_return({})
+    ProsopiteTodo.todo_file_path = todo_file_path
+    ProsopiteTodo.clear_pending_notifications
   end
 
   after do
     FileUtils.rm_rf(tmp_dir)
-    Rake::Task.tasks.each(&:reenable)
+    ProsopiteTodo.todo_file_path = nil
+    ProsopiteTodo.clear_pending_notifications
   end
 
-  describe "prosopite_todo:generate" do
+  describe ".generate" do
     it "creates a new todo file with pending notifications" do
-      allow(ProsopiteTodo).to receive(:pending_notifications).and_return(
-        "SELECT * FROM users" => [["app/models/user.rb:10"]]
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
       )
 
-      expect { Rake.application["prosopite_todo:generate"].invoke }
-        .to output(/Generated/).to_stdout
+      described_class.generate(output: output)
 
+      expect(output.string).to include("Generated")
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
       expect(todo_file.entries.length).to eq(1)
     end
@@ -42,19 +44,29 @@ RSpec.describe "ProsopiteTodo Rake Tasks" do
           query: "SELECT * FROM old_table"
       YAML
 
-      allow(ProsopiteTodo).to receive(:pending_notifications).and_return(
-        "SELECT * FROM users" => [["app/models/user.rb:10"]]
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
       )
 
-      Rake.application["prosopite_todo:generate"].invoke
+      described_class.generate(output: output)
 
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
       expect(todo_file.entries.length).to eq(1)
       expect(todo_file.entries[0]["query"]).to eq("SELECT * FROM users")
     end
+
+    it "creates empty file when no pending notifications" do
+      described_class.generate(output: output)
+
+      expect(output.string).to include("Generated")
+      expect(output.string).to include("0 entries")
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+      expect(todo_file.entries.length).to eq(0)
+    end
   end
 
-  describe "prosopite_todo:update" do
+  describe ".update" do
     it "adds new notifications while keeping existing ones" do
       # Create existing entry
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
@@ -65,13 +77,14 @@ RSpec.describe "ProsopiteTodo Rake Tasks" do
       )
       todo_file.save
 
-      allow(ProsopiteTodo).to receive(:pending_notifications).and_return(
-        "SELECT * FROM users" => [["app/models/user.rb:10"]]
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
       )
 
-      expect { Rake.application["prosopite_todo:update"].invoke }
-        .to output(/Updated/).to_stdout
+      described_class.update(output: output)
 
+      expect(output.string).to include("Updated")
       reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
       expect(reloaded.entries.length).to eq(2)
     end
@@ -86,19 +99,27 @@ RSpec.describe "ProsopiteTodo Rake Tasks" do
       )
       todo_file.save
 
-      allow(ProsopiteTodo).to receive(:pending_notifications).and_return(
-        "SELECT * FROM users" => [["app/models/user.rb:10"]]
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
       )
 
-      Rake.application["prosopite_todo:update"].invoke
+      described_class.update(output: output)
 
       reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
       expect(reloaded.entries.length).to eq(1)
     end
+
+    it "creates file when no existing file and no pending notifications" do
+      described_class.update(output: output)
+
+      expect(output.string).to include("Updated")
+      expect(output.string).to include("0 total entries")
+    end
   end
 
-  describe "prosopite_todo:list" do
-    it "displays all todo entries" do
+  describe ".list" do
+    it "displays all todo entries with location and fingerprint" do
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
       todo_file.add_entry(
         fingerprint: "abc123",
@@ -107,17 +128,34 @@ RSpec.describe "ProsopiteTodo Rake Tasks" do
       )
       todo_file.save
 
-      expect { Rake.application["prosopite_todo:list"].invoke }
-        .to output(/SELECT \* FROM users/).to_stdout
+      described_class.list(output: output)
+
+      expect(output.string).to include("SELECT * FROM users")
+      expect(output.string).to include("Location: app/models/user.rb:10")
+      expect(output.string).to include("Fingerprint: abc123")
+      expect(output.string).to include("Entries in")
+    end
+
+    it "displays numbered entries" do
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+      todo_file.add_entry(fingerprint: "abc123", query: "SELECT 1", location: "file1.rb:1")
+      todo_file.add_entry(fingerprint: "def456", query: "SELECT 2", location: "file2.rb:2")
+      todo_file.save
+
+      described_class.list(output: output)
+
+      expect(output.string).to include("1. SELECT 1")
+      expect(output.string).to include("2. SELECT 2")
     end
 
     it "shows message when no entries exist" do
-      expect { Rake.application["prosopite_todo:list"].invoke }
-        .to output(/No entries/).to_stdout
+      described_class.list(output: output)
+
+      expect(output.string).to include("No entries")
     end
   end
 
-  describe "prosopite_todo:clean" do
+  describe ".clean" do
     it "removes entries not in pending notifications" do
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
 
@@ -137,16 +175,56 @@ RSpec.describe "ProsopiteTodo Rake Tasks" do
       )
       todo_file.save
 
-      allow(ProsopiteTodo).to receive(:pending_notifications).and_return(
-        "SELECT * FROM users" => [["app/models/user.rb:10"]]
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]]
       )
 
-      expect { Rake.application["prosopite_todo:clean"].invoke }
-        .to output(/Cleaned/).to_stdout
+      described_class.clean(output: output)
 
+      expect(output.string).to include("Cleaned")
       reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
       expect(reloaded.entries.length).to eq(1)
       expect(reloaded.entries[0]["query"]).to eq("SELECT * FROM users")
+    end
+
+    it "removes all entries when no pending notifications" do
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+      todo_file.add_entry(
+        fingerprint: "remove123",
+        query: "SELECT * FROM old_table",
+        location: "app/models/old.rb:5"
+      )
+      todo_file.save
+
+      described_class.clean(output: output)
+
+      expect(output.string).to include("removed 1 entries")
+      expect(output.string).to include("0 remaining")
+      reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
+      expect(reloaded.entries.length).to eq(0)
+    end
+
+    it "handles multiple matching notifications" do
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+
+      fp1 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["file1.rb:1"])
+      fp2 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["file2.rb:2"])
+
+      todo_file.add_entry(fingerprint: fp1, query: "SELECT * FROM users", location: "file1.rb:1")
+      todo_file.add_entry(fingerprint: fp2, query: "SELECT * FROM users", location: "file2.rb:2")
+      todo_file.add_entry(fingerprint: "old123", query: "SELECT * FROM old", location: "old.rb:1")
+      todo_file.save
+
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["file1.rb:1"], ["file2.rb:2"]]
+      )
+
+      described_class.clean(output: output)
+
+      reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
+      expect(reloaded.entries.length).to eq(2)
     end
   end
 end

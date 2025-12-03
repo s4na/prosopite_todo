@@ -399,6 +399,42 @@ RSpec.describe ProsopiteTodo::Scanner do
       end
     end
 
+    context "when Rails.backtrace_cleaner is available and location_filter is not set" do
+      let(:mixed_stack) do
+        [
+          "/usr/local/bundle/gems/activesupport-6.1.7/lib/active_support/notifications.rb:186:in `finish'",
+          "app/models/user.rb:42:in `some_method'",
+          "app/controllers/users_controller.rb:15:in `show'"
+        ]
+      end
+
+      before do
+        # Reset configuration to ensure location_filter is nil
+        ProsopiteTodo.reset_configuration!
+
+        # Mock Rails.backtrace_cleaner
+        mock_cleaner = double("backtrace_cleaner")
+        allow(mock_cleaner).to receive(:clean).and_return(["app/models/user.rb:42:in `some_method'"])
+
+        mock_rails = Module.new
+        mock_rails.define_singleton_method(:backtrace_cleaner) { mock_cleaner }
+        mock_rails.define_singleton_method(:respond_to?) { |method| method == :backtrace_cleaner }
+        stub_const("Rails", mock_rails)
+      end
+
+      after do
+        ProsopiteTodo.reset_configuration!
+      end
+
+      it "uses Rails.backtrace_cleaner to clean frames" do
+        notifications = { "SELECT * FROM users" => [mixed_stack] }
+        described_class.record_notifications(notifications, todo_file)
+
+        entry = todo_file.entries.first
+        expect(entry["location"]).to eq("app/models/user.rb:42:in `some_method'")
+      end
+    end
+
     context "with custom location_filter" do
       let(:mixed_stack) do
         [
