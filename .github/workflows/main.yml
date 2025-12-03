@@ -39,6 +39,7 @@ jobs:
 
     env:
       RAILS_VERSION: ${{ matrix.rails }}
+      CI: true
 
     steps:
       - uses: actions/checkout@v4
@@ -51,5 +52,13 @@ jobs:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
 
-      - name: Run unit tests
+      - name: Run tests
         run: bundle exec rspec spec/prosopite_todo/ spec/prosopite_todo_spec.rb
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: matrix.ruby == '3.3' && matrix.rails == '8.0'
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
