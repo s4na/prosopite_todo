@@ -4,6 +4,15 @@
 
 A RuboCop-like TODO file for [Prosopite](https://github.com/charkost/prosopite) N+1 detection. This gem allows you to ignore known N+1 queries via `.prosopite_todo.yaml`, similar to RuboCop's TODO functionality.
 
+## Use Case
+
+This gem is designed for **large codebases** where you want to incrementally adopt Prosopite N+1 detection. Instead of fixing all N+1 queries at once, you can:
+
+1. Record existing N+1 queries to a TODO file
+2. Ignore known N+1 queries while developing new features
+3. Gradually fix N+1 queries over time
+4. Ensure no new N+1 queries are introduced
+
 ## Installation
 
 Add this line to your application's Gemfile:
