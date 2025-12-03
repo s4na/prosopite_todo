@@ -13,10 +13,54 @@ RSpec.describe ProsopiteTodo::Scanner do
     ProsopiteTodo.reset_configuration!
   end
 
+  describe ".normalize_query" do
+    it "replaces numeric IDs with ?" do
+      query = "SELECT * FROM items WHERE items.parent_id = 10465"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM items WHERE items.parent_id = ?")
+    end
+
+    it "replaces multiple numeric values" do
+      query = "SELECT * FROM users WHERE id IN (1, 2, 3)"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM users WHERE id IN (?, ?, ?)")
+    end
+
+    it "replaces float values" do
+      query = "SELECT * FROM products WHERE price > 99.99"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM products WHERE price > ?")
+    end
+
+    it "handles LIMIT and OFFSET" do
+      query = "SELECT * FROM users LIMIT 10 OFFSET 20"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM users LIMIT ? OFFSET ?")
+    end
+
+    it "returns original query for nil" do
+      expect(described_class.normalize_query(nil)).to be_nil
+    end
+
+    it "returns original query for empty string" do
+      expect(described_class.normalize_query("")).to eq("")
+    end
+
+    it "preserves table and column names with numeric suffixes" do
+      query = "SELECT user_id, name FROM users123"
+      # Table names like "users123" are preserved because \b doesn't match
+      # at the boundary between letter and digit
+      expect(described_class.normalize_query(query)).to eq("SELECT user_id, name FROM users123")
+    end
+  end
+
   describe ".fingerprint" do
     it "generates consistent fingerprint for same query and location" do
       fp1 = described_class.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
       fp2 = described_class.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+
+      expect(fp1).to eq(fp2)
+    end
+
+    it "generates same fingerprint for queries with different numeric IDs" do
+      fp1 = described_class.fingerprint(query: "SELECT * FROM items WHERE parent_id = 10465", location: ["app/models/item.rb:10"])
+      fp2 = described_class.fingerprint(query: "SELECT * FROM items WHERE parent_id = 10466", location: ["app/models/item.rb:10"])
 
       expect(fp1).to eq(fp2)
     end
@@ -329,6 +373,34 @@ RSpec.describe ProsopiteTodo::Scanner do
         described_class.record_notifications(notifications, todo_file)
 
         expect(todo_file.entries.length).to eq(1)
+      end
+    end
+
+    context "with query normalization" do
+      it "stores normalized query with ? instead of numeric IDs" do
+        notifications = {
+          "SELECT * FROM items WHERE parent_id = 10465" => [["app/models/item.rb:10"]]
+        }
+
+        described_class.record_notifications(notifications, todo_file)
+
+        entry = todo_file.entries.first
+        expect(entry["query"]).to eq("SELECT * FROM items WHERE parent_id = ?")
+      end
+
+      it "deduplicates queries with different numeric IDs to single entry" do
+        notifications1 = {
+          "SELECT * FROM items WHERE parent_id = 10465" => [["app/models/item.rb:10"]]
+        }
+        notifications2 = {
+          "SELECT * FROM items WHERE parent_id = 10466" => [["app/models/item.rb:10"]]
+        }
+
+        described_class.record_notifications(notifications1, todo_file)
+        described_class.record_notifications(notifications2, todo_file)
+
+        expect(todo_file.entries.length).to eq(1)
+        expect(todo_file.entries.first["query"]).to eq("SELECT * FROM items WHERE parent_id = ?")
       end
     end
   end

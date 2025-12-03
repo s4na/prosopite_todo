@@ -9,8 +9,21 @@ module ProsopiteTodo
       def fingerprint(query:, location:)
         cleaned_location = clean_location(location)
         normalized_location = normalize_location(cleaned_location)
-        content = "#{query}|#{normalized_location}"
+        normalized_query = normalize_query(query)
+        content = "#{normalized_query}|#{normalized_location}"
         Digest::SHA256.hexdigest(content)[0, 16]
+      end
+
+      # Normalize query by replacing numeric literals with placeholders
+      # This reduces duplicate entries for the same N+1 pattern with different IDs
+      # @param query [String] the SQL query
+      # @return [String] normalized query with numbers replaced by ?
+      def normalize_query(query)
+        return query if query.nil? || query.empty?
+
+        # Replace numeric literals (integers and floats) with ?
+        # Handles: WHERE id = 123, IN (1, 2, 3), LIMIT 10, etc.
+        query.gsub(/\b\d+(\.\d+)?\b/, "?")
       end
 
       # Filter notifications based on TODO file
@@ -53,9 +66,10 @@ module ProsopiteTodo
           locations_array.each do |location|
             fp = fingerprint(query: query, location: location)
             cleaned_location = clean_location(location)
+            normalized_query = normalize_query(query)
             todo_file.add_entry(
               fingerprint: fp,
-              query: query,
+              query: normalized_query,
               location: normalize_location(cleaned_location)
             )
           end
