@@ -32,7 +32,8 @@ module ProsopiteTodo
         result = query.dup
 
         # Replace string literals (single quotes) as a whole
-        result.gsub!(/'[^']*'/, "?")
+        # Handle escaped quotes ('') within string literals
+        result.gsub!(/'(?:[^']|'')*'/, "?")
 
         # Replace numeric literals but preserve $N style placeholders
         result.gsub!(/(?<!\$)\b\d+(\.\d+)?\b/, "?")

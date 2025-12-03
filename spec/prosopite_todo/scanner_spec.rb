@@ -73,6 +73,21 @@ RSpec.describe ProsopiteTodo::Scanner do
       query = "SELECT * FROM logs WHERE message = 'Error 404' AND path = '/page/123'"
       expect(described_class.normalize_query(query)).to eq("SELECT * FROM logs WHERE message = ? AND path = ?")
     end
+
+    it "handles escaped single quotes within string literals" do
+      query = "SELECT * FROM users WHERE name = 'O''Brien'"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM users WHERE name = ?")
+    end
+
+    it "handles multiple escaped quotes in string literal" do
+      query = "SELECT * FROM logs WHERE message = 'Error: ''file not found'''"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM logs WHERE message = ?")
+    end
+
+    it "handles empty string literal" do
+      query = "SELECT * FROM users WHERE name = ''"
+      expect(described_class.normalize_query(query)).to eq("SELECT * FROM users WHERE name = ?")
+    end
   end
 
   describe ".fingerprint" do
