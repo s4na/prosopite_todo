@@ -197,6 +197,49 @@ RSpec.describe ProsopiteTodo::Scanner do
         expect(fp1).not_to eq(fp2)
       end
     end
+
+    context "with test_location" do
+      it "generates different fingerprint for same query with different test_location" do
+        fp1 = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: "spec/a_spec.rb")
+        fp2 = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: "spec/b_spec.rb")
+        expect(fp1).not_to eq(fp2)
+      end
+
+      it "generates same fingerprint for same query, location, and test_location" do
+        fp1 = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: "spec/a_spec.rb")
+        fp2 = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: "spec/a_spec.rb")
+        expect(fp1).to eq(fp2)
+      end
+
+      it "handles nil test_location" do
+        fp = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: nil)
+        expect(fp).to be_a(String)
+        expect(fp.length).to eq(16)
+      end
+    end
+  end
+
+  describe ".legacy_fingerprint" do
+    it "generates fingerprint without test_location" do
+      fp = described_class.legacy_fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+      expect(fp).to be_a(String)
+      expect(fp.length).to eq(16)
+    end
+
+    it "generates consistent fingerprint" do
+      fp1 = described_class.legacy_fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+      fp2 = described_class.legacy_fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+      expect(fp1).to eq(fp2)
+    end
+
+    it "differs from new fingerprint format (with test_location)" do
+      # Legacy fingerprint has format "query|location"
+      # New fingerprint has format "query|location|test_location" (even when nil)
+      # They should be different to support backward compatibility checking
+      legacy_fp = described_class.legacy_fingerprint(query: "SELECT 1", location: ["test.rb:1"])
+      new_fp = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: nil)
+      expect(legacy_fp).not_to eq(new_fp)
+    end
   end
 
   describe ".filter_notifications" do
