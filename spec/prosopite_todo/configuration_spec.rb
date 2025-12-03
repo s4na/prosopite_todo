@@ -27,6 +27,23 @@ RSpec.describe ProsopiteTodo::Configuration do
 
       expect(ProsopiteTodo.configuration.max_location_frames).to be_nil
     end
+
+    it "raises ArgumentError when set to non-integer" do
+      expect {
+        ProsopiteTodo.configure { |c| c.max_location_frames = "5" }
+      }.to raise_error(ArgumentError, "max_location_frames must be an Integer or nil")
+    end
+
+    it "raises ArgumentError when set to negative number" do
+      expect {
+        ProsopiteTodo.configure { |c| c.max_location_frames = -1 }
+      }.to raise_error(ArgumentError, "max_location_frames must be non-negative")
+    end
+
+    it "accepts zero" do
+      ProsopiteTodo.configure { |c| c.max_location_frames = 0 }
+      expect(ProsopiteTodo.configuration.max_location_frames).to eq(0)
+    end
   end
 
   describe "#location_filter" do
@@ -42,6 +59,28 @@ RSpec.describe ProsopiteTodo::Configuration do
       end
 
       expect(ProsopiteTodo.configuration.location_filter).to eq(custom_filter)
+    end
+
+    it "raises ArgumentError when set to non-callable" do
+      expect {
+        ProsopiteTodo.configure { |c| c.location_filter = "not callable" }
+      }.to raise_error(ArgumentError, "location_filter must respond to #call")
+    end
+
+    it "accepts Proc" do
+      filter = proc { |frames| frames }
+      ProsopiteTodo.configure { |c| c.location_filter = filter }
+      expect(ProsopiteTodo.configuration.location_filter).to eq(filter)
+    end
+
+    it "accepts any object responding to #call" do
+      filter_object = Object.new
+      def filter_object.call(frames)
+        frames
+      end
+
+      ProsopiteTodo.configure { |c| c.location_filter = filter_object }
+      expect(ProsopiteTodo.configuration.location_filter).to eq(filter_object)
     end
   end
 
