@@ -32,8 +32,30 @@ module ProsopiteTodo
 
         # Return deep copy to prevent external mutation of internal state
         @pending_notifications.transform_values do |locations|
-          locations.map { |loc| loc.dup }
+          locations.map do |loc|
+            if loc.is_a?(Hash)
+              # Deep copy: also dup the hash contents
+              {
+                call_stack: deep_dup(loc[:call_stack]),
+                test_location: loc[:test_location]&.dup
+              }
+            else
+              deep_dup(loc)
+            end
+          end
         end
+      end
+    end
+
+    # Deep duplicate for arrays and strings
+    def deep_dup(obj)
+      case obj
+      when Array
+        obj.map { |e| e.dup rescue e }
+      when String
+        obj.dup
+      else
+        obj
       end
     end
 
@@ -65,12 +87,18 @@ module ProsopiteTodo
 
     # Detect test location from caller stack
     # Looks for spec/ or test/ directories in the call stack
+    # Uses stricter pattern to avoid false positives (e.g., "/users/spec/")
     def detect_test_location
       caller_locations.each do |loc|
         path = loc.path
         next unless path
 
-        if path.include?("/spec/") || path.include?("/test/")
+        # Normalize path for cross-platform compatibility
+        normalized_path = path.gsub("\\", "/")
+
+        # Match spec/ or test/ directory at start or after a slash
+        # This avoids matching paths like "/users/spec/code.rb"
+        if normalized_path.match?(%r{(?:^|/)(?:spec|test)/})
           return "#{path}:#{loc.lineno}"
         end
       end

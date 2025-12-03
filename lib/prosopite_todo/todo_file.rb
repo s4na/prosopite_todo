@@ -27,7 +27,16 @@ module ProsopiteTodo
     end
 
     def ignored?(fingerprint)
-      fingerprints.include?(fingerprint)
+      fingerprints.include?(fingerprint) || legacy_fingerprints.include?(fingerprint)
+    end
+
+    # Legacy fingerprints for backward compatibility
+    # Entries without test_location use old fingerprint format (query|location)
+    # We need to check both old and new format to avoid duplicate entries
+    def legacy_fingerprints
+      @legacy_fingerprints ||= entries
+        .select { |e| e["test_location"].nil? || e["test_location"].to_s.strip.empty? }
+        .map { |e| e["fingerprint"] }
     end
 
     def add_entry(fingerprint:, query:, location: nil, test_location: nil)

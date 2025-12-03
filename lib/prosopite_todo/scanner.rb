@@ -19,6 +19,16 @@ module ProsopiteTodo
         Digest::SHA256.hexdigest(content)[0, 16]
       end
 
+      # Generate legacy fingerprint (without test_location) for backward compatibility
+      # Used to check if an entry already exists in old format
+      def legacy_fingerprint(query:, location:)
+        cleaned_location = clean_location(location)
+        normalized_location = normalize_location(cleaned_location)
+        normalized_query = normalize_query(query)
+        content = "#{normalized_query}|#{normalized_location}"
+        Digest::SHA256.hexdigest(content)[0, 16]
+      end
+
       # Normalize query by replacing literals with placeholders
       # This reduces duplicate entries for the same N+1 pattern with different IDs
       #
@@ -91,6 +101,12 @@ module ProsopiteTodo
             call_stack = extract_call_stack(loc_entry)
             test_loc = extract_test_location(loc_entry)
             fp = fingerprint(query: query, location: call_stack, test_location: test_loc)
+
+            # Also check legacy fingerprint for backward compatibility
+            # Skip if an entry with the same query+location exists (even without test_location)
+            legacy_fp = legacy_fingerprint(query: query, location: call_stack)
+            next if todo_file.legacy_fingerprints.include?(legacy_fp)
+
             cleaned_location = clean_location(call_stack)
             normalized_query = normalize_query(query)
             todo_file.add_entry(
