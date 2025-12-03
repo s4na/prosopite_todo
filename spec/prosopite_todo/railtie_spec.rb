@@ -168,6 +168,91 @@ RSpec.describe ProsopiteTodo::Railtie do
   describe "SqliteFingerprintSupport" do
     let(:sqlite_support) { described_class::SqliteFingerprintSupport }
 
+    describe "#fingerprint" do
+      # Base class that provides super method for testing
+      def create_test_class
+        base_class = Class.new do
+          def fingerprint(query)
+            "super_fingerprint:#{query}"
+          end
+        end
+
+        Class.new(base_class) do
+          prepend ProsopiteTodo::Railtie::SqliteFingerprintSupport
+        end
+      end
+
+      context "when database adapter is sqlite" do
+        it "uses sqlite_fingerprint for sqlite adapter" do
+          db_config = double("db_config", adapter: "sqlite3")
+
+          # Create a mock module for ActiveRecord::Base
+          # The code calls ActiveRecord::Base.connection_db_config.adapter directly
+          ar_base = Module.new do
+            class << self
+              attr_accessor :mock_db_config
+            end
+
+            def self.connection_db_config
+              mock_db_config
+            end
+          end
+          ar_base.mock_db_config = db_config
+          stub_const("ActiveRecord::Base", ar_base)
+
+          instance = create_test_class.new
+          query = "SELECT * FROM users WHERE id = 1"
+          result = instance.fingerprint(query)
+
+          expect(result).to include("?")
+          expect(result).not_to include("super_fingerprint")
+        end
+      end
+
+      context "when database adapter is not sqlite" do
+        it "calls super for non-sqlite adapters" do
+          db_config = double("db_config", adapter: "postgresql")
+
+          ar_base = Module.new do
+            class << self
+              attr_accessor :mock_db_config
+            end
+
+            def self.connection_db_config
+              mock_db_config
+            end
+          end
+          ar_base.mock_db_config = db_config
+          stub_const("ActiveRecord::Base", ar_base)
+
+          instance = create_test_class.new
+          query = "SELECT * FROM users WHERE id = 1"
+          result = instance.fingerprint(query)
+
+          expect(result).to eq("super_fingerprint:#{query}")
+        end
+      end
+
+      context "when ActiveRecord::Base.connection_db_config raises error" do
+        it "rescues the error and calls super" do
+          ar_base = Module.new do
+            def self.connection_db_config
+              raise StandardError, "No connection"
+            end
+          end
+          stub_const("ActiveRecord::Base", ar_base)
+
+          instance = create_test_class.new
+          query = "SELECT 1"
+          result = instance.fingerprint(query)
+
+          # When connection_db_config raises error, the rescue nil pattern returns nil for db_adapter
+          # nil.to_s.start_with?("sqlite") is false, so it calls super
+          expect(result).to eq("super_fingerprint:#{query}")
+        end
+      end
+    end
+
     describe "#sqlite_fingerprint" do
       let(:dummy_class) do
         Class.new do

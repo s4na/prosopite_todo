@@ -30,6 +30,11 @@ RSpec.describe ProsopiteTodo do
       expect(ProsopiteTodo.pending_notifications).to eq({})
     end
 
+    it "can be directly set via pending_notifications=" do
+      ProsopiteTodo.pending_notifications = { "SELECT * FROM posts" => [["app/models/post.rb:5"]] }
+      expect(ProsopiteTodo.pending_notifications).to have_key("SELECT * FROM posts")
+    end
+
     it "can add pending notifications" do
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM users",
