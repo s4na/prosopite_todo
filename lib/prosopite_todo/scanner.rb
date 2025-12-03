@@ -74,7 +74,7 @@ module ProsopiteTodo
 
         # Apply custom filter if configured
         cleaned_frames = if config.location_filter
-                           config.location_filter.call(frames)
+                           apply_custom_filter(config.location_filter, frames)
                          elsif defined?(Rails) && Rails.respond_to?(:backtrace_cleaner)
                            Rails.backtrace_cleaner.clean(frames)
                          else
@@ -83,11 +83,27 @@ module ProsopiteTodo
 
         # Apply frame limit
         max_frames = config.max_location_frames
-        if max_frames && cleaned_frames.length > max_frames
+        if max_frames && max_frames.positive? && cleaned_frames.length > max_frames
           cleaned_frames = cleaned_frames.first(max_frames)
         end
 
         cleaned_frames
+      end
+
+      # Apply custom filter with error handling.
+      # Falls back to original frames if filter raises an error or returns non-array.
+      def apply_custom_filter(filter, frames)
+        result = filter.call(frames)
+
+        unless result.is_a?(Array)
+          warn "[ProsopiteTodo] location_filter must return an Array, got #{result.class}. Using original frames."
+          return frames
+        end
+
+        result
+      rescue StandardError => e
+        warn "[ProsopiteTodo] Error in location_filter: #{e.message}. Using original frames."
+        frames
       end
 
       def normalize_location(location)

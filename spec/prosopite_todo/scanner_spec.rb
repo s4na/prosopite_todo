@@ -469,5 +469,75 @@ RSpec.describe ProsopiteTodo::Scanner do
         expect(fp1).not_to eq(fp2)
       end
     end
+
+    context "error handling in location_filter" do
+      it "falls back to original frames when filter raises error" do
+        ProsopiteTodo.configure do |c|
+          c.location_filter = ->(_frames) { raise StandardError, "Filter error" }
+          c.max_location_frames = nil
+        end
+
+        notifications = { "SELECT * FROM users" => [["app/test.rb:1", "app/test.rb:2"]] }
+
+        expect { described_class.record_notifications(notifications, todo_file) }.not_to raise_error
+
+        entry = todo_file.entries.first
+        expect(entry["location"]).to eq("app/test.rb:1 -> app/test.rb:2")
+      end
+
+      it "outputs warning when filter raises error" do
+        ProsopiteTodo.configure do |c|
+          c.location_filter = ->(_frames) { raise StandardError, "Something went wrong" }
+          c.max_location_frames = nil
+        end
+
+        notifications = { "SELECT * FROM users" => [["app/test.rb:1"]] }
+
+        expect {
+          described_class.record_notifications(notifications, todo_file)
+        }.to output(/Error in location_filter: Something went wrong/).to_stderr
+      end
+
+      it "falls back to original frames when filter returns non-array" do
+        ProsopiteTodo.configure do |c|
+          c.location_filter = ->(_frames) { "not an array" }
+          c.max_location_frames = nil
+        end
+
+        notifications = { "SELECT * FROM users" => [["app/test.rb:1", "app/test.rb:2"]] }
+
+        expect { described_class.record_notifications(notifications, todo_file) }.not_to raise_error
+
+        entry = todo_file.entries.first
+        expect(entry["location"]).to eq("app/test.rb:1 -> app/test.rb:2")
+      end
+
+      it "outputs warning when filter returns non-array" do
+        ProsopiteTodo.configure do |c|
+          c.location_filter = ->(_frames) { { key: "value" } }
+          c.max_location_frames = nil
+        end
+
+        notifications = { "SELECT * FROM users" => [["app/test.rb:1"]] }
+
+        expect {
+          described_class.record_notifications(notifications, todo_file)
+        }.to output(/location_filter must return an Array, got Hash/).to_stderr
+      end
+
+      it "handles filter returning nil by falling back to original frames" do
+        ProsopiteTodo.configure do |c|
+          c.location_filter = ->(_frames) { nil }
+          c.max_location_frames = nil
+        end
+
+        notifications = { "SELECT * FROM users" => [["app/test.rb:1"]] }
+
+        expect { described_class.record_notifications(notifications, todo_file) }.not_to raise_error
+
+        entry = todo_file.entries.first
+        expect(entry["location"]).to eq("app/test.rb:1")
+      end
+    end
   end
 end
