@@ -28,7 +28,12 @@ module ProsopiteTodo
           # Track current test location for N+1 detection
           config.around(:each) do |example|
             # Set the current test location from the example metadata
-            ProsopiteTodo.current_test_location = example.metadata[:location]
+            test_location = example.metadata[:location]
+            ProsopiteTodo.current_test_location = test_location
+
+            # Register this test as executed (for proper cleanup even when no N+1s detected)
+            ProsopiteTodo.register_executed_test(test_location)
+
             begin
               example.run
             ensure

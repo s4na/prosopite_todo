@@ -140,6 +140,46 @@ RSpec.describe ProsopiteTodo do
     end
   end
 
+  describe ".executed_test_locations" do
+    it "returns a Set" do
+      expect(ProsopiteTodo.executed_test_locations).to be_a(Set)
+    end
+
+    it "tracks registered test locations" do
+      # Note: RSpec integration registers current test automatically
+      initial_size = ProsopiteTodo.executed_test_locations.size
+
+      ProsopiteTodo.register_executed_test("spec/models/user_spec.rb:10")
+      ProsopiteTodo.register_executed_test("spec/models/post_spec.rb:20")
+
+      # Line numbers are normalized away
+      locations = ProsopiteTodo.executed_test_locations
+      expect(locations).to include("spec/models/user_spec.rb")
+      expect(locations).to include("spec/models/post_spec.rb")
+      expect(locations.size).to be >= initial_size + 2
+    end
+
+    it "ignores nil test locations" do
+      initial_size = ProsopiteTodo.executed_test_locations.size
+      ProsopiteTodo.register_executed_test(nil)
+      expect(ProsopiteTodo.executed_test_locations.size).to eq(initial_size)
+    end
+
+    it "ignores empty string test locations" do
+      initial_size = ProsopiteTodo.executed_test_locations.size
+      ProsopiteTodo.register_executed_test("")
+      expect(ProsopiteTodo.executed_test_locations.size).to eq(initial_size)
+    end
+  end
+
+  describe ".clear_executed_test_locations" do
+    it "clears all executed test locations" do
+      ProsopiteTodo.register_executed_test("spec/models/user_spec.rb:10")
+      ProsopiteTodo.clear_executed_test_locations
+      expect(ProsopiteTodo.executed_test_locations).to eq(Set.new)
+    end
+  end
+
   describe ".update_todo!" do
     let(:temp_dir) { Dir.mktmpdir }
     let(:todo_path) { File.join(temp_dir, ".prosopite_todo.yaml") }
@@ -150,6 +190,7 @@ RSpec.describe ProsopiteTodo do
 
     after do
       ProsopiteTodo.clear_pending_notifications
+      ProsopiteTodo.clear_executed_test_locations
       ProsopiteTodo.todo_file_path = nil
       FileUtils.rm_rf(temp_dir)
     end
@@ -168,19 +209,25 @@ RSpec.describe ProsopiteTodo do
     end
 
     it "adds new entries and removes old ones by default (clean: true)" do
+      test_location = "spec/test_spec.rb"
+
       # Create initial entry
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM users WHERE id = ?",
-        locations: [["app/models/user.rb:10"]]
+        locations: [["app/models/user.rb:10"]],
+        test_location: test_location
       )
+      ProsopiteTodo.register_executed_test(test_location)
       ProsopiteTodo.update_todo!
-      # Note: pending notifications are automatically cleared after save
+      # Note: pending notifications and executed_test_locations are automatically cleared after save
 
       # Add another entry (first one will be removed because clean: true is default)
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM posts WHERE user_id = ?",
-        locations: [["app/models/post.rb:20"]]
+        locations: [["app/models/post.rb:20"]],
+        test_location: test_location
       )
+      ProsopiteTodo.register_executed_test(test_location)
       ProsopiteTodo.update_todo!
 
       todo_file = ProsopiteTodo::TodoFile.new(todo_path)
@@ -334,18 +381,24 @@ RSpec.describe ProsopiteTodo do
       end
 
       it "removes entries no longer detected" do
+        test_location = "spec/test_spec.rb"
+
         # Create initial entry
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM users",
-          locations: [["app/models/user.rb:10"]]
+          locations: [["app/models/user.rb:10"]],
+          test_location: test_location
         )
+        ProsopiteTodo.register_executed_test(test_location)
         ProsopiteTodo.update_todo!
 
         # Second update with different notification (simulating N+1 was fixed)
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM posts",
-          locations: [["app/models/post.rb:20"]]
+          locations: [["app/models/post.rb:20"]],
+          test_location: test_location
         )
+        ProsopiteTodo.register_executed_test(test_location)
         result = ProsopiteTodo.update_todo!(clean: true)
 
         expect(result[:added]).to eq(1)
@@ -376,7 +429,36 @@ RSpec.describe ProsopiteTodo do
       end
 
       it "removes entries when tests run but detect no N+1" do
-        test_location = "./spec/prosopite_todo_spec.rb"
+        test_location = "spec/prosopite_todo_spec.rb"
+
+        # Create initial entry with test_location
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM users",
+          locations: [["app/models/user.rb:10"]],
+          test_location: test_location
+        )
+        ProsopiteTodo.register_executed_test(test_location)
+        ProsopiteTodo.update_todo!
+
+        # Simulate: same test ran but detected a different N+1
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM posts",
+          locations: [["app/models/post.rb:20"]],
+          test_location: test_location
+        )
+        ProsopiteTodo.register_executed_test(test_location)
+        result = ProsopiteTodo.update_todo!(clean: true)
+
+        expect(result[:removed]).to eq(1)
+        expect(result[:added]).to eq(1)
+
+        todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+        expect(todo_file.entries.length).to eq(1)
+        expect(todo_file.entries.first["query"]).to eq("SELECT * FROM posts")
+      end
+
+      it "removes entries when all tests run and all N+1s are resolved (zero notifications)" do
+        test_location = "spec/models/user_spec.rb"
 
         # Create initial entry with test_location
         ProsopiteTodo.add_pending_notification(
@@ -386,21 +468,22 @@ RSpec.describe ProsopiteTodo do
         )
         ProsopiteTodo.update_todo!
 
-        # Simulate: same test ran but detected nothing (N+1 was fixed)
-        # We need at least one notification from that test to indicate it ran
-        ProsopiteTodo.add_pending_notification(
-          query: "SELECT * FROM posts",
-          locations: [["app/models/post.rb:20"]],
-          test_location: test_location
-        )
-        result = ProsopiteTodo.update_todo!(clean: true)
-
-        expect(result[:removed]).to eq(1)
-        expect(result[:added]).to eq(1)
-
         todo_file = ProsopiteTodo::TodoFile.new(todo_path)
         expect(todo_file.entries.length).to eq(1)
-        expect(todo_file.entries.first["query"]).to eq("SELECT * FROM posts")
+
+        # Simulate: same test ran but detected ZERO N+1s (all resolved)
+        # No add_pending_notification calls, but we register the test as executed
+        ProsopiteTodo.register_executed_test(test_location)
+        result = ProsopiteTodo.update_todo!(clean: true)
+
+        # The entry should be removed because:
+        # 1. The test was registered as executed
+        # 2. No new N+1 was detected for that test
+        expect(result[:removed]).to eq(1)
+        expect(result[:added]).to eq(0)
+
+        todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+        expect(todo_file.entries).to be_empty
       end
 
       it "keeps entries that are still detected" do
@@ -426,18 +509,24 @@ RSpec.describe ProsopiteTodo do
       end
 
       it "outputs message for added and removed entries" do
+        test_location = "spec/test_spec.rb"
+
         # Create initial entry
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM users",
-          locations: [["app/models/user.rb:10"]]
+          locations: [["app/models/user.rb:10"]],
+          test_location: test_location
         )
+        ProsopiteTodo.register_executed_test(test_location)
         ProsopiteTodo.update_todo!
 
         # Update with different notification
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM posts",
-          locations: [["app/models/post.rb:20"]]
+          locations: [["app/models/post.rb:20"]],
+          test_location: test_location
         )
+        ProsopiteTodo.register_executed_test(test_location)
 
         expect { ProsopiteTodo.update_todo!(clean: true) }
           .to output(/Added 1 new.*Removed 1 resolved/).to_stderr
