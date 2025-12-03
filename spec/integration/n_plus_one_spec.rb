@@ -102,6 +102,8 @@ RSpec.describe "ProsopiteTodo Integration" do
     FileUtils.rm_rf(tmp_dir)
     Book.delete_all
     Author.delete_all
+    ProsopiteTodo.clear_pending_notifications
+    ProsopiteTodo.reset_configuration!
   end
 
   describe "verifying N+1 scenario setup" do
