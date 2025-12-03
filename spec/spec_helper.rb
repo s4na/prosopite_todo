@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 # SimpleCov must be started before any other code is loaded
-# Only run coverage when COVERAGE env var is set or in CI environment
-if ENV["COVERAGE"] || ENV["CI"]
+# Only run coverage when COVERAGE env var is explicitly set to "true" or in CI environment
+if ENV["COVERAGE"] == "true" || ENV["CI"] == "true"
   require "simplecov"
   require "simplecov-lcov"
 
