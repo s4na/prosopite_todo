@@ -1,25 +1,29 @@
 # frozen_string_literal: true
 
 # SimpleCov must be started before any other code is loaded
-require "simplecov"
-require "simplecov-lcov"
+# Only run coverage when COVERAGE env var is set or in CI environment
+if ENV["COVERAGE"] || ENV["CI"]
+  require "simplecov"
+  require "simplecov-lcov"
 
-SimpleCov::Formatter::LcovFormatter.config do |c|
-  c.report_with_single_file = true
-  c.single_report_path = "coverage/lcov.info"
-end
+  SimpleCov::Formatter::LcovFormatter.config do |c|
+    c.report_with_single_file = true
+    c.single_report_path = "coverage/lcov.info"
+  end
 
-SimpleCov.formatters = SimpleCov::Formatter::MultiFormatter.new(
-  [
-    SimpleCov::Formatter::HTMLFormatter,
-    SimpleCov::Formatter::LcovFormatter
-  ]
-)
+  SimpleCov.formatters = SimpleCov::Formatter::MultiFormatter.new(
+    [
+      SimpleCov::Formatter::HTMLFormatter,
+      SimpleCov::Formatter::LcovFormatter
+    ]
+  )
 
-SimpleCov.start do
-  add_filter "/spec/"
-  enable_coverage :branch
-  minimum_coverage line: 80, branch: 70
+  SimpleCov.start do
+    add_filter "/spec/"
+    add_filter "/lib/prosopite_todo/version.rb"
+    enable_coverage :branch
+    minimum_coverage line: 80, branch: 70
+  end
 end
 
 # IMPORTANT: Require logger BEFORE active_support to fix Rails 6.x compatibility
