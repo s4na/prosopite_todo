@@ -1,5 +1,7 @@
 # ProsopiteTodo
 
+[日本語版 (Japanese)](./README.ja.md)
+
 > **Note**: This gem is experimental. Testing is not yet complete. Once sufficient testing has been done, we plan to publish it to RubyGems.
 
 A RuboCop-like TODO file for [Prosopite](https://github.com/charkost/prosopite) N+1 detection. This gem allows you to ignore known N+1 queries via `.prosopite_todo.yaml`, similar to RuboCop's TODO functionality.
