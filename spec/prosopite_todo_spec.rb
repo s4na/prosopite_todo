@@ -76,6 +76,59 @@ RSpec.describe ProsopiteTodo do
     end
   end
 
+  describe ".detect_test_location" do
+    it "returns a test location when called from spec directory" do
+      result = ProsopiteTodo.detect_test_location
+      # When called from a spec file, it should find the test location
+      expect(result).to be_a(String)
+      expect(result).to include("spec/")
+    end
+
+    it "returns nil when no spec/test paths in caller stack" do
+      # Mock caller_locations to return non-test paths
+      allow(ProsopiteTodo).to receive(:caller_locations).and_return([
+        double(path: "/usr/lib/ruby/gems/active_support.rb", lineno: 10),
+        double(path: "/app/models/user.rb", lineno: 20),
+        double(path: "/app/controllers/application_controller.rb", lineno: 30)
+      ])
+
+      result = ProsopiteTodo.detect_test_location
+      expect(result).to be_nil
+    end
+
+    it "returns nil when path is nil" do
+      allow(ProsopiteTodo).to receive(:caller_locations).and_return([
+        double(path: nil, lineno: 10)
+      ])
+
+      result = ProsopiteTodo.detect_test_location
+      expect(result).to be_nil
+    end
+  end
+
+  describe ".deep_dup" do
+    it "returns the same object for non-Array/String types" do
+      # Test the else branch at line 58
+      expect(ProsopiteTodo.deep_dup(123)).to eq(123)
+      expect(ProsopiteTodo.deep_dup(nil)).to be_nil
+      expect(ProsopiteTodo.deep_dup(true)).to eq(true)
+    end
+
+    it "duplicates arrays" do
+      arr = ["a", "b"]
+      result = ProsopiteTodo.deep_dup(arr)
+      expect(result).to eq(arr)
+      expect(result).not_to be(arr)
+    end
+
+    it "duplicates strings" do
+      str = "test"
+      result = ProsopiteTodo.deep_dup(str)
+      expect(result).to eq(str)
+      expect(result).not_to be(str)
+    end
+  end
+
   describe ".clear_pending_notifications" do
     it "clears all pending notifications" do
       ProsopiteTodo.add_pending_notification(

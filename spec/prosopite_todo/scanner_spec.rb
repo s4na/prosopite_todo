@@ -595,6 +595,30 @@ RSpec.describe ProsopiteTodo::Scanner do
       end
     end
 
+    context "when neither Rails nor location_filter is available" do
+      let(:simple_stack) { ["app/models/user.rb:10", "app/controllers/users_controller.rb:20"] }
+
+      before do
+        ProsopiteTodo.reset_configuration!
+        # Ensure Rails is not defined (hide it if defined)
+        hide_const("Rails") if defined?(Rails)
+      end
+
+      after do
+        ProsopiteTodo.reset_configuration!
+      end
+
+      it "uses frames as-is when no filter is available" do
+        # This tests the else branch at line 196 in scanner.rb
+        notifications = { "SELECT * FROM users" => [simple_stack] }
+        described_class.record_notifications(notifications, todo_file)
+
+        entry = todo_file.entries.first
+        # Without any filtering, frames should be joined with " -> "
+        expect(entry["location"]).to include("app/models/user.rb:10")
+      end
+    end
+
     context "when Rails.backtrace_cleaner is available and location_filter is not set" do
       let(:mixed_stack) do
         [
