@@ -21,6 +21,7 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
     FileUtils.rm_rf(tmp_dir)
     ProsopiteTodo.todo_file_path = nil
     ProsopiteTodo.clear_pending_notifications
+    ProsopiteTodo.reset_configuration!
   end
 
   describe ".generate" do
