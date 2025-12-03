@@ -259,4 +259,59 @@ RSpec.describe ProsopiteTodo::TodoFile do
       expect(todo_file.entries).to eq([])
     end
   end
+
+  describe "#filter_by_fingerprints!" do
+    let(:todo_file) { described_class.new(todo_file_path) }
+
+    before do
+      todo_file.add_entry(fingerprint: "fp1", query: "SELECT 1", location: "file1.rb:1")
+      todo_file.add_entry(fingerprint: "fp2", query: "SELECT 2", location: "file2.rb:2")
+      todo_file.add_entry(fingerprint: "fp3", query: "SELECT 3", location: "file3.rb:3")
+    end
+
+    it "keeps entries with fingerprints in the given set" do
+      fingerprints = Set.new(["fp1", "fp3"])
+
+      todo_file.filter_by_fingerprints!(fingerprints)
+
+      expect(todo_file.entries.length).to eq(2)
+      expect(todo_file.fingerprints).to include("fp1", "fp3")
+      expect(todo_file.fingerprints).not_to include("fp2")
+    end
+
+    it "returns the number of removed entries" do
+      fingerprints = Set.new(["fp1"])
+
+      removed_count = todo_file.filter_by_fingerprints!(fingerprints)
+
+      expect(removed_count).to eq(2)
+    end
+
+    it "removes all entries when given empty set" do
+      fingerprints = Set.new
+
+      removed_count = todo_file.filter_by_fingerprints!(fingerprints)
+
+      expect(removed_count).to eq(3)
+      expect(todo_file.entries).to be_empty
+    end
+
+    it "keeps all entries when all fingerprints match" do
+      fingerprints = Set.new(["fp1", "fp2", "fp3"])
+
+      removed_count = todo_file.filter_by_fingerprints!(fingerprints)
+
+      expect(removed_count).to eq(0)
+      expect(todo_file.entries.length).to eq(3)
+    end
+
+    it "preserves created_at timestamps" do
+      original_created_at = todo_file.entries[0]["created_at"]
+      fingerprints = Set.new(["fp1"])
+
+      todo_file.filter_by_fingerprints!(fingerprints)
+
+      expect(todo_file.entries[0]["created_at"]).to eq(original_created_at)
+    end
+  end
 end

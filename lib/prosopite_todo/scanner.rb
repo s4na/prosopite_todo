@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require "set"
 
 module ProsopiteTodo
   class Scanner
@@ -59,6 +60,19 @@ module ProsopiteTodo
             )
           end
         end
+      end
+
+      # Extract all fingerprints from notifications
+      # @param notifications [Hash] query => locations_array
+      # @return [Set] set of fingerprints
+      def extract_fingerprints(notifications)
+        fingerprints = Set.new
+        notifications.each do |query, locations_array|
+          locations_array.each do |location|
+            fingerprints << fingerprint(query: query, location: location)
+          end
+        end
+        fingerprints
       end
 
       private

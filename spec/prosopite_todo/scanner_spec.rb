@@ -333,6 +333,47 @@ RSpec.describe ProsopiteTodo::Scanner do
     end
   end
 
+  describe ".extract_fingerprints" do
+    before do
+      ProsopiteTodo.configure do |c|
+        c.location_filter = ->(frames) { frames }
+      end
+    end
+
+    it "returns a Set of fingerprints from notifications" do
+      notifications = {
+        "SELECT * FROM users" => [["app/models/user.rb:10"], ["app/models/user.rb:20"]]
+      }
+
+      result = described_class.extract_fingerprints(notifications)
+
+      expect(result).to be_a(Set)
+      expect(result.length).to eq(2)
+    end
+
+    it "includes fingerprints for all locations" do
+      notifications = {
+        "SELECT * FROM users" => [["file1.rb:1"]],
+        "SELECT * FROM posts" => [["file2.rb:2"]]
+      }
+
+      result = described_class.extract_fingerprints(notifications)
+
+      fp1 = described_class.fingerprint(query: "SELECT * FROM users", location: ["file1.rb:1"])
+      fp2 = described_class.fingerprint(query: "SELECT * FROM posts", location: ["file2.rb:2"])
+
+      expect(result).to include(fp1)
+      expect(result).to include(fp2)
+    end
+
+    it "returns empty Set for empty notifications" do
+      result = described_class.extract_fingerprints({})
+
+      expect(result).to be_a(Set)
+      expect(result).to be_empty
+    end
+  end
+
   describe "location filtering" do
     let(:todo_file) { ProsopiteTodo::TodoFile.new(todo_file_path) }
 

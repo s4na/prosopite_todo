@@ -128,7 +128,9 @@ RSpec.describe ProsopiteTodo do
         locations: [["app/models/user.rb:10"]]
       )
 
-      expect(ProsopiteTodo.update_todo!).to eq(1)
+      result = ProsopiteTodo.update_todo!
+      expect(result[:added]).to eq(1)
+      expect(result[:removed]).to eq(0)
     end
 
     it "does not add duplicate entries" do
@@ -143,15 +145,17 @@ RSpec.describe ProsopiteTodo do
         query: "SELECT * FROM users WHERE id = ?",
         locations: [["app/models/user.rb:10"]]
       )
-      new_count = ProsopiteTodo.update_todo!
+      result = ProsopiteTodo.update_todo!
 
-      expect(new_count).to eq(0)
+      expect(result[:added]).to eq(0)
       todo_file = ProsopiteTodo::TodoFile.new(todo_path)
       expect(todo_file.entries.length).to eq(1)
     end
 
-    it "returns 0 when no pending notifications" do
-      expect(ProsopiteTodo.update_todo!).to eq(0)
+    it "returns zero counts when no pending notifications" do
+      result = ProsopiteTodo.update_todo!
+      expect(result[:added]).to eq(0)
+      expect(result[:removed]).to eq(0)
     end
 
     it "does not output message when no new entries" do
@@ -167,7 +171,8 @@ RSpec.describe ProsopiteTodo do
         ]
       )
 
-      expect(ProsopiteTodo.update_todo!).to eq(2)
+      result = ProsopiteTodo.update_todo!
+      expect(result[:added]).to eq(2)
 
       todo_file = ProsopiteTodo::TodoFile.new(todo_path)
       expect(todo_file.entries.length).to eq(2)
@@ -232,6 +237,97 @@ RSpec.describe ProsopiteTodo do
 
       # Restore permissions for cleanup
       FileUtils.chmod(0o755, temp_dir)
+    end
+
+    context "with clean: true option" do
+      before do
+        # Use identity filter to prevent backtrace_cleaner from affecting fingerprints
+        ProsopiteTodo.reset_configuration!
+        ProsopiteTodo.configure do |c|
+          c.location_filter = ->(frames) { frames }
+        end
+      end
+
+      it "removes entries no longer detected" do
+        # Create initial entry
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM users",
+          locations: [["app/models/user.rb:10"]]
+        )
+        ProsopiteTodo.update_todo!
+
+        # Second update with different notification (simulating N+1 was fixed)
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM posts",
+          locations: [["app/models/post.rb:20"]]
+        )
+        result = ProsopiteTodo.update_todo!(clean: true)
+
+        expect(result[:added]).to eq(1)
+        expect(result[:removed]).to eq(1)
+
+        todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+        expect(todo_file.entries.length).to eq(1)
+        expect(todo_file.entries.first["query"]).to eq("SELECT * FROM posts")
+      end
+
+      it "removes all entries when no pending notifications" do
+        # Create initial entry
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM users",
+          locations: [["app/models/user.rb:10"]]
+        )
+        ProsopiteTodo.update_todo!
+
+        # Update with clean and no pending notifications (all N+1s fixed)
+        result = ProsopiteTodo.update_todo!(clean: true)
+
+        expect(result[:removed]).to eq(1)
+        expect(result[:added]).to eq(0)
+
+        todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+        expect(todo_file.entries).to be_empty
+      end
+
+      it "keeps entries that are still detected" do
+        # Create initial entry
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM users",
+          locations: [["app/models/user.rb:10"]]
+        )
+        ProsopiteTodo.update_todo!
+
+        # Update with same notification (N+1 still exists)
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM users",
+          locations: [["app/models/user.rb:10"]]
+        )
+        result = ProsopiteTodo.update_todo!(clean: true)
+
+        expect(result[:removed]).to eq(0)
+        expect(result[:added]).to eq(0)
+
+        todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+        expect(todo_file.entries.length).to eq(1)
+      end
+
+      it "outputs message for added and removed entries" do
+        # Create initial entry
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM users",
+          locations: [["app/models/user.rb:10"]]
+        )
+        ProsopiteTodo.update_todo!
+
+        # Update with different notification
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM posts",
+          locations: [["app/models/post.rb:20"]]
+        )
+
+        expect { ProsopiteTodo.update_todo!(clean: true) }
+          .to output(/Added 1 new.*Removed 1 resolved/).to_stderr
+      end
     end
   end
 

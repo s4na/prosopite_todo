@@ -15,6 +15,12 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
   before do
     ProsopiteTodo.todo_file_path = todo_file_path
     ProsopiteTodo.clear_pending_notifications
+    # Reset configuration to avoid Rails.backtrace_cleaner affecting fingerprints
+    ProsopiteTodo.reset_configuration!
+    # Use identity filter to prevent backtrace_cleaner from filtering test locations
+    ProsopiteTodo.configure do |c|
+      c.location_filter = ->(frames) { frames }
+    end
   end
 
   after do
@@ -115,6 +121,88 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
 
       expect(output.string).to include("Updated")
       expect(output.string).to include("0 total entries")
+    end
+
+    context "with clean option" do
+      it "removes entries no longer detected when clean: true" do
+        # Create initial entry
+        todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+        fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+        todo_file.add_entry(
+          fingerprint: fp,
+          query: "SELECT * FROM users",
+          location: "app/models/user.rb:10"
+        )
+        todo_file.save
+
+        # Add different notification (simulating N+1 was fixed, new one detected)
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM posts",
+          locations: [["app/models/post.rb:20"]]
+        )
+
+        described_class.update(output: output, clean: true)
+
+        expect(output.string).to include("removed 1")
+        expect(output.string).to include("added 1")
+        reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
+        expect(reloaded.entries.length).to eq(1)
+        expect(reloaded.entries.first["query"]).to eq("SELECT * FROM posts")
+      end
+
+      it "keeps entries when clean: false (default without env var)" do
+        # Create initial entry
+        todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+        fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+        todo_file.add_entry(
+          fingerprint: fp,
+          query: "SELECT * FROM users",
+          location: "app/models/user.rb:10"
+        )
+        todo_file.save
+
+        # Add different notification
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM posts",
+          locations: [["app/models/post.rb:20"]]
+        )
+
+        described_class.update(output: output, clean: false)
+
+        reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
+        expect(reloaded.entries.length).to eq(2)
+      end
+    end
+
+    describe ".clean_enabled?" do
+      after do
+        ENV.delete("PROSOPITE_TODO_CLEAN")
+      end
+
+      it "returns false when PROSOPITE_TODO_CLEAN is not set" do
+        ENV.delete("PROSOPITE_TODO_CLEAN")
+        expect(described_class.clean_enabled?).to be false
+      end
+
+      it "returns true when PROSOPITE_TODO_CLEAN is '1'" do
+        ENV["PROSOPITE_TODO_CLEAN"] = "1"
+        expect(described_class.clean_enabled?).to be true
+      end
+
+      it "returns true when PROSOPITE_TODO_CLEAN is 'true'" do
+        ENV["PROSOPITE_TODO_CLEAN"] = "true"
+        expect(described_class.clean_enabled?).to be true
+      end
+
+      it "returns true when PROSOPITE_TODO_CLEAN is 'yes'" do
+        ENV["PROSOPITE_TODO_CLEAN"] = "yes"
+        expect(described_class.clean_enabled?).to be true
+      end
+
+      it "returns false when PROSOPITE_TODO_CLEAN is '0'" do
+        ENV["PROSOPITE_TODO_CLEAN"] = "0"
+        expect(described_class.clean_enabled?).to be false
+      end
     end
   end
 
