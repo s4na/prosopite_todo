@@ -174,7 +174,7 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
         expect(reloaded.entries.first["query"]).to eq("SELECT * FROM posts")
       end
 
-      it "keeps entries when clean: false (default without env var)" do
+      it "keeps entries when clean: false" do
         # Create initial entry
         todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
         fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
