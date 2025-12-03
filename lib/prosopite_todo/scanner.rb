@@ -6,7 +6,8 @@ module ProsopiteTodo
   class Scanner
     class << self
       def fingerprint(query:, location:)
-        normalized_location = normalize_location(location)
+        cleaned_location = clean_location(location)
+        normalized_location = normalize_location(cleaned_location)
         content = "#{query}|#{normalized_location}"
         Digest::SHA256.hexdigest(content)[0, 16]
       end
@@ -50,16 +51,44 @@ module ProsopiteTodo
         notifications.each do |query, locations_array|
           locations_array.each do |location|
             fp = fingerprint(query: query, location: location)
+            cleaned_location = clean_location(location)
             todo_file.add_entry(
               fingerprint: fp,
               query: query,
-              location: normalize_location(location)
+              location: normalize_location(cleaned_location)
             )
           end
         end
       end
 
       private
+
+      # Filter and limit stack frames to show only relevant application code.
+      # Uses custom location_filter if configured, otherwise falls back to
+      # Rails.backtrace_cleaner when available.
+      def clean_location(location)
+        frames = Array(location)
+        return frames if frames.empty?
+
+        config = ProsopiteTodo.configuration
+
+        # Apply custom filter if configured
+        cleaned_frames = if config.location_filter
+                           config.location_filter.call(frames)
+                         elsif defined?(Rails) && Rails.respond_to?(:backtrace_cleaner)
+                           Rails.backtrace_cleaner.clean(frames)
+                         else
+                           frames
+                         end
+
+        # Apply frame limit
+        max_frames = config.max_location_frames
+        if max_frames && cleaned_frames.length > max_frames
+          cleaned_frames = cleaned_frames.first(max_frames)
+        end
+
+        cleaned_frames
+      end
 
       def normalize_location(location)
         Array(location).join(" -> ")

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "prosopite_todo/version"
+require_relative "prosopite_todo/configuration"
 require_relative "prosopite_todo/todo_file"
 require_relative "prosopite_todo/scanner"
 require_relative "prosopite_todo/railtie" if defined?(Rails::Railtie)
