@@ -1,5 +1,7 @@
 # ProsopiteTodo
 
+[English](./README.md)
+
 > **注意**: この gem は実験的なものです。動作確認がまだ十分に取れていません。十分な動作確認が取れた後、RubyGems に公開する予定です。
 
 [Prosopite](https://github.com/charkost/prosopite) N+1検出のための RuboCop ライクな TODO ファイル機能を提供する gem です。`.prosopite_todo.yaml` を使って既知の N+1 クエリを無視できます。
