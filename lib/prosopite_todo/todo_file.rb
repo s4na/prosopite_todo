@@ -33,8 +33,9 @@ module ProsopiteTodo
     # Legacy fingerprints for backward compatibility
     # Entries without test_location use old fingerprint format (query|location)
     # We need to check both old and new format to avoid duplicate entries
+    # Note: Not memoized because entries can be modified by filter_by_test_locations! or add_entry
     def legacy_fingerprints
-      @legacy_fingerprints ||= entries
+      entries
         .select { |e| e["test_location"].nil? || e["test_location"].to_s.strip.empty? }
         .map { |e| e["fingerprint"] }
     end
