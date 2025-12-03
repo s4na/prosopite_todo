@@ -185,6 +185,52 @@ This is useful for incrementally adding known N+1 queries to your TODO file as y
   created_at: "2024-01-15T10:30:00Z"
 ```
 
+## Configuration
+
+ProsopiteTodo provides options to customize how stack traces are filtered and displayed in the location field.
+
+### Location Filtering
+
+By default, ProsopiteTodo uses `Rails.backtrace_cleaner` to filter stack traces and limits the output to 5 frames. This makes the `.prosopite_todo.yaml` file more readable and reduces file size.
+
+```ruby
+# config/initializers/prosopite_todo.rb
+ProsopiteTodo.configure do |config|
+  # Maximum number of stack frames to include (default: 5)
+  # Set to nil to include all frames after filtering
+  config.max_location_frames = 5
+
+  # Custom filter for stack frames (default: nil, uses Rails.backtrace_cleaner)
+  # Example: Only include app/ paths
+  config.location_filter = ->(frames) { frames.select { |f| f.include?('/app/') } }
+end
+```
+
+### Configuration Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `max_location_frames` | `5` | Maximum number of stack frames to include in location. Set to `nil` for unlimited. |
+| `location_filter` | `nil` | Custom callable for filtering frames. Takes precedence over `Rails.backtrace_cleaner`. |
+
+### Examples
+
+**Include only application code:**
+```ruby
+ProsopiteTodo.configure do |config|
+  config.location_filter = ->(frames) { frames.select { |f| f.include?('/app/') } }
+  config.max_location_frames = 3
+end
+```
+
+**Disable filtering (include full stack trace):**
+```ruby
+ProsopiteTodo.configure do |config|
+  config.location_filter = ->(frames) { frames }
+  config.max_location_frames = nil
+end
+```
+
 ## Integration with Prosopite
 
 ProsopiteTodo automatically integrates with Prosopite through a Rails Railtie. When your Rails application starts, it sets up a callback that filters N+1 notifications based on your TODO file.

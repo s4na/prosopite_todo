@@ -185,6 +185,52 @@ PROSOPITE_TODO_UPDATE=1 bundle exec rspec spec/models/ --pattern "*_spec.rb"
   created_at: "2024-01-15T10:30:00Z"
 ```
 
+## 設定
+
+ProsopiteTodo は、スタックトレースのフィルタリング方法と location フィールドでの表示方法をカスタマイズするオプションを提供します。
+
+### ロケーションフィルタリング
+
+デフォルトでは、ProsopiteTodo は `Rails.backtrace_cleaner` を使用してスタックトレースをフィルタリングし、出力を5フレームに制限します。これにより `.prosopite_todo.yaml` ファイルが読みやすくなり、ファイルサイズも削減されます。
+
+```ruby
+# config/initializers/prosopite_todo.rb
+ProsopiteTodo.configure do |config|
+  # 含めるスタックフレームの最大数（デフォルト: 5）
+  # nil に設定するとフィルタリング後のすべてのフレームを含めます
+  config.max_location_frames = 5
+
+  # スタックフレームのカスタムフィルター（デフォルト: nil、Rails.backtrace_cleaner を使用）
+  # 例: app/ パスのみを含める
+  config.location_filter = ->(frames) { frames.select { |f| f.include?('/app/') } }
+end
+```
+
+### 設定オプション
+
+| オプション | デフォルト | 説明 |
+|-----------|-----------|------|
+| `max_location_frames` | `5` | location に含めるスタックフレームの最大数。`nil` で無制限。 |
+| `location_filter` | `nil` | フレームフィルタリング用のカスタム callable。`Rails.backtrace_cleaner` より優先されます。 |
+
+### 例
+
+**アプリケーションコードのみを含める:**
+```ruby
+ProsopiteTodo.configure do |config|
+  config.location_filter = ->(frames) { frames.select { |f| f.include?('/app/') } }
+  config.max_location_frames = 3
+end
+```
+
+**フィルタリングを無効化（完全なスタックトレースを含める）:**
+```ruby
+ProsopiteTodo.configure do |config|
+  config.location_filter = ->(frames) { frames }
+  config.max_location_frames = nil
+end
+```
+
 ## Prosopite との統合
 
 ProsopiteTodo は Rails Railtie を通じて Prosopite と自動的に統合されます。Rails アプリケーションが起動すると、TODO ファイルに基づいて N+1 通知をフィルタリングするコールバックが設定されます。
