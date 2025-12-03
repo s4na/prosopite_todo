@@ -58,9 +58,21 @@ RSpec.describe ProsopiteTodo do
     it "handles single location (not wrapped in array)" do
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM users",
-        locations: ["app/models/user.rb:10"]
+        locations: ["app/models/user.rb:10"],
+        test_location: "spec/models/user_spec.rb"
       )
-      expect(ProsopiteTodo.pending_notifications["SELECT * FROM users"]).to include("app/models/user.rb:10")
+      notifications = ProsopiteTodo.pending_notifications["SELECT * FROM users"]
+      expect(notifications.first[:call_stack]).to eq("app/models/user.rb:10")
+    end
+
+    it "includes test_location in notifications" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]],
+        test_location: "spec/models/user_spec.rb"
+      )
+      notifications = ProsopiteTodo.pending_notifications["SELECT * FROM users"]
+      expect(notifications.first[:test_location]).to eq("spec/models/user_spec.rb")
     end
   end
 
@@ -291,7 +303,7 @@ RSpec.describe ProsopiteTodo do
         expect(todo_file.entries.first["query"]).to eq("SELECT * FROM posts")
       end
 
-      it "removes all entries when no pending notifications" do
+      it "preserves entries when no pending notifications (no tests run)" do
         # Create initial entry
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM users",
@@ -299,14 +311,43 @@ RSpec.describe ProsopiteTodo do
         )
         ProsopiteTodo.update_todo!
 
-        # Update with clean and no pending notifications (all N+1s fixed)
+        # Update with clean but no pending notifications
+        # Since no tests were run, entries should be preserved
         result = ProsopiteTodo.update_todo!(clean: true)
 
-        expect(result[:removed]).to eq(1)
+        expect(result[:removed]).to eq(0)
         expect(result[:added]).to eq(0)
 
         todo_file = ProsopiteTodo::TodoFile.new(todo_path)
-        expect(todo_file.entries).to be_empty
+        expect(todo_file.entries.length).to eq(1)
+      end
+
+      it "removes entries when tests run but detect no N+1" do
+        test_location = "./spec/prosopite_todo_spec.rb"
+
+        # Create initial entry with test_location
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM users",
+          locations: [["app/models/user.rb:10"]],
+          test_location: test_location
+        )
+        ProsopiteTodo.update_todo!
+
+        # Simulate: same test ran but detected nothing (N+1 was fixed)
+        # We need at least one notification from that test to indicate it ran
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM posts",
+          locations: [["app/models/post.rb:20"]],
+          test_location: test_location
+        )
+        result = ProsopiteTodo.update_todo!(clean: true)
+
+        expect(result[:removed]).to eq(1)
+        expect(result[:added]).to eq(1)
+
+        todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+        expect(todo_file.entries.length).to eq(1)
+        expect(todo_file.entries.first["query"]).to eq("SELECT * FROM posts")
       end
 
       it "keeps entries that are still detected" do

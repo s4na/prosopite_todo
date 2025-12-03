@@ -30,13 +30,14 @@ module ProsopiteTodo
       fingerprints.include?(fingerprint)
     end
 
-    def add_entry(fingerprint:, query:, location: nil)
+    def add_entry(fingerprint:, query:, location: nil, test_location: nil)
       return if ignored?(fingerprint)
 
       entry = {
         "fingerprint" => fingerprint,
         "query" => query,
         "location" => location,
+        "test_location" => test_location,
         "created_at" => Time.now.utc.iso8601
       }
       entries << entry
@@ -57,6 +58,36 @@ module ProsopiteTodo
       original_count = entries.length
       @entries = entries.select { |entry| fingerprints.include?(entry["fingerprint"]) }
       original_count - @entries.length
+    end
+
+    # Filter entries by test locations - only removes entries for tests that were run
+    # Entries for tests that were NOT run are preserved
+    # @param fingerprints [Set] set of fingerprints detected in current run
+    # @param test_locations [Set] set of test locations that were run
+    # @return [Integer] number of removed entries
+    def filter_by_test_locations!(fingerprints, test_locations)
+      original_count = entries.length
+      @entries = entries.select do |entry|
+        entry_test_loc = entry["test_location"]
+
+        if entry_test_loc.nil? || entry_test_loc.to_s.empty?
+          # Legacy entries without test_location - keep them (conservative)
+          true
+        elsif test_locations.include?(entry_test_loc)
+          # This entry's test was run - keep only if still detected
+          fingerprints.include?(entry["fingerprint"])
+        else
+          # This entry's test was NOT run - preserve it
+          true
+        end
+      end
+      original_count - @entries.length
+    end
+
+    # Get all unique test locations in the TODO file
+    # @return [Set] set of test locations
+    def test_locations
+      Set.new(entries.map { |e| e["test_location"] }.compact.reject(&:empty?))
     end
 
     private

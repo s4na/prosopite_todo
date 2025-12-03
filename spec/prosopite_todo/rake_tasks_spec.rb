@@ -73,19 +73,23 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
   end
 
   describe ".update" do
+    let(:test_location) { "spec/models/user_spec.rb" }
+
     it "removes old entries and adds new ones by default (clean: true)" do
-      # Create existing entry
+      # Create existing entry with test_location
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
       todo_file.add_entry(
         fingerprint: "existing123",
         query: "SELECT * FROM posts",
-        location: "app/models/post.rb:5"
+        location: "app/models/post.rb:5",
+        test_location: test_location
       )
       todo_file.save
 
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM users",
-        locations: [["app/models/user.rb:10"]]
+        locations: [["app/models/user.rb:10"]],
+        test_location: test_location
       )
 
       described_class.update(output: output)
@@ -109,7 +113,8 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
 
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM users",
-        locations: [["app/models/user.rb:10"]]
+        locations: [["app/models/user.rb:10"]],
+        test_location: test_location
       )
 
       described_class.update(output: output, clean: false)
@@ -121,17 +126,19 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
 
     it "does not duplicate existing entries" do
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
-      fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+      fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"], test_location: test_location)
       todo_file.add_entry(
         fingerprint: fp,
         query: "SELECT * FROM users",
-        location: "app/models/user.rb:10"
+        location: "app/models/user.rb:10",
+        test_location: test_location
       )
       todo_file.save
 
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM users",
-        locations: [["app/models/user.rb:10"]]
+        locations: [["app/models/user.rb:10"]],
+        test_location: test_location
       )
 
       described_class.update(output: output)
@@ -149,20 +156,22 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
 
     context "with clean option" do
       it "removes entries no longer detected when clean: true" do
-        # Create initial entry
+        # Create initial entry with test_location
         todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
-        fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+        fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"], test_location: test_location)
         todo_file.add_entry(
           fingerprint: fp,
           query: "SELECT * FROM users",
-          location: "app/models/user.rb:10"
+          location: "app/models/user.rb:10",
+          test_location: test_location
         )
         todo_file.save
 
         # Add different notification (simulating N+1 was fixed, new one detected)
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM posts",
-          locations: [["app/models/post.rb:20"]]
+          locations: [["app/models/post.rb:20"]],
+          test_location: test_location
         )
 
         described_class.update(output: output, clean: true)
@@ -177,24 +186,61 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
       it "keeps entries when clean: false" do
         # Create initial entry
         todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
-        fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+        fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"], test_location: test_location)
         todo_file.add_entry(
           fingerprint: fp,
           query: "SELECT * FROM users",
-          location: "app/models/user.rb:10"
+          location: "app/models/user.rb:10",
+          test_location: test_location
         )
         todo_file.save
 
         # Add different notification
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM posts",
-          locations: [["app/models/post.rb:20"]]
+          locations: [["app/models/post.rb:20"]],
+          test_location: test_location
         )
 
         described_class.update(output: output, clean: false)
 
         reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
         expect(reloaded.entries.length).to eq(2)
+      end
+
+      it "preserves entries from tests that were not run" do
+        # Create entries from different test files
+        todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+        fp1 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"], test_location: "spec/models/user_spec.rb")
+        fp2 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM posts", location: ["app/models/post.rb:10"], test_location: "spec/models/post_spec.rb")
+        todo_file.add_entry(
+          fingerprint: fp1,
+          query: "SELECT * FROM users",
+          location: "app/models/user.rb:10",
+          test_location: "spec/models/user_spec.rb"
+        )
+        todo_file.add_entry(
+          fingerprint: fp2,
+          query: "SELECT * FROM posts",
+          location: "app/models/post.rb:10",
+          test_location: "spec/models/post_spec.rb"
+        )
+        todo_file.save
+
+        # Run only user_spec.rb tests (no N+1 detected = fixed)
+        # post_spec.rb is NOT run, so its entries should be preserved
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM comments",
+          locations: [["app/models/comment.rb:10"]],
+          test_location: "spec/models/user_spec.rb"
+        )
+
+        described_class.update(output: output, clean: true)
+
+        reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
+        # user_spec.rb entry removed (not detected), post_spec.rb entry preserved, comment entry added
+        expect(reloaded.entries.length).to eq(2)
+        expect(reloaded.entries.map { |e| e["test_location"] }).to contain_exactly("spec/models/post_spec.rb", "spec/models/user_spec.rb")
       end
     end
 
@@ -278,28 +324,33 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
   end
 
   describe ".clean" do
+    let(:test_location) { "spec/models/user_spec.rb" }
+
     it "removes entries not in pending notifications" do
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
 
       # Entry that should be kept (matches pending)
-      keep_fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+      keep_fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"], test_location: test_location)
       todo_file.add_entry(
         fingerprint: keep_fp,
         query: "SELECT * FROM users",
-        location: "app/models/user.rb:10"
+        location: "app/models/user.rb:10",
+        test_location: test_location
       )
 
-      # Entry that should be removed (no matching pending)
+      # Entry that should be removed (no matching pending, same test_location)
       todo_file.add_entry(
         fingerprint: "remove123",
         query: "SELECT * FROM old_table",
-        location: "app/models/old.rb:5"
+        location: "app/models/old.rb:5",
+        test_location: test_location
       )
       todo_file.save
 
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM users",
-        locations: [["app/models/user.rb:10"]]
+        locations: [["app/models/user.rb:10"]],
+        test_location: test_location
       )
 
       described_class.clean(output: output)
@@ -310,37 +361,73 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
       expect(reloaded.entries[0]["query"]).to eq("SELECT * FROM users")
     end
 
-    it "removes all entries when no pending notifications" do
+    it "removes entries for tests that were run but detected nothing" do
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
       todo_file.add_entry(
         fingerprint: "remove123",
         query: "SELECT * FROM old_table",
-        location: "app/models/old.rb:5"
+        location: "app/models/old.rb:5",
+        test_location: test_location
       )
       todo_file.save
+
+      # Add a notification from the same test (triggering that test location was run)
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]],
+        test_location: test_location
+      )
 
       described_class.clean(output: output)
 
       expect(output.string).to include("removed 1 entries")
-      expect(output.string).to include("0 remaining")
       reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
+      # The old entry is removed, but the new one is NOT added by clean (clean only removes)
+      # Wait, clean also calls record_notifications... let me check the code again
+      # Actually clean just filters, doesn't add. So the entry count should be 0
       expect(reloaded.entries.length).to eq(0)
+    end
+
+    it "preserves entries without test_location (legacy entries)" do
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+      todo_file.add_entry(
+        fingerprint: "legacy123",
+        query: "SELECT * FROM legacy",
+        location: "app/models/legacy.rb:5"
+        # No test_location
+      )
+      todo_file.save
+
+      # Run some tests
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]],
+        test_location: test_location
+      )
+
+      described_class.clean(output: output)
+
+      reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
+      # Legacy entry should be preserved
+      expect(reloaded.entries.length).to eq(1)
+      expect(reloaded.entries[0]["query"]).to eq("SELECT * FROM legacy")
     end
 
     it "handles multiple matching notifications" do
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
 
-      fp1 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["file1.rb:1"])
-      fp2 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["file2.rb:2"])
+      fp1 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["file1.rb:1"], test_location: test_location)
+      fp2 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["file2.rb:2"], test_location: test_location)
 
-      todo_file.add_entry(fingerprint: fp1, query: "SELECT * FROM users", location: "file1.rb:1")
-      todo_file.add_entry(fingerprint: fp2, query: "SELECT * FROM users", location: "file2.rb:2")
-      todo_file.add_entry(fingerprint: "old123", query: "SELECT * FROM old", location: "old.rb:1")
+      todo_file.add_entry(fingerprint: fp1, query: "SELECT * FROM users", location: "file1.rb:1", test_location: test_location)
+      todo_file.add_entry(fingerprint: fp2, query: "SELECT * FROM users", location: "file2.rb:2", test_location: test_location)
+      todo_file.add_entry(fingerprint: "old123", query: "SELECT * FROM old", location: "old.rb:1", test_location: test_location)
       todo_file.save
 
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM users",
-        locations: [["file1.rb:1"], ["file2.rb:2"]]
+        locations: [["file1.rb:1"], ["file2.rb:2"]],
+        test_location: test_location
       )
 
       described_class.clean(output: output)

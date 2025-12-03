@@ -14,6 +14,10 @@ module ProsopiteTodo
   # To disable auto-removal of resolved N+1 entries:
   #   PROSOPITE_TODO_UPDATE=1 PROSOPITE_TODO_CLEAN=0 bundle exec rspec
   #
+  # Note: With test_location tracking, only N+1 entries from tests that were
+  # actually run will be candidates for removal. Entries from other tests
+  # are preserved, making partial test runs safe.
+  #
   module RSpec
     class << self
       def setup
@@ -21,6 +25,17 @@ module ProsopiteTodo
 
         clean = clean_enabled?
         ::RSpec.configure do |config|
+          # Track current test location for N+1 detection
+          config.around(:each) do |example|
+            # Set the current test location from the example metadata
+            ProsopiteTodo.current_test_location = example.metadata[:location]
+            begin
+              example.run
+            ensure
+              ProsopiteTodo.current_test_location = nil
+            end
+          end
+
           config.after(:suite) do
             ProsopiteTodo.update_todo!(clean: clean)
           end
