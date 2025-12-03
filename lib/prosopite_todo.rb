@@ -47,11 +47,12 @@ module ProsopiteTodo
       mutex.synchronize { @pending_notifications = {} }
     end
 
-    # Update TODO file with pending notifications (adds new entries without removing existing ones)
-    # Returns the number of new entries added
+    # Update TODO file with pending notifications
+    # @param clean [Boolean] if true, also removes entries that are no longer detected (default: true)
+    # Returns a hash with :added and :removed counts
     # Raises ProsopiteTodo::Error if file operations fail
     # Thread-safe: uses atomic swap pattern to prevent data loss
-    def update_todo!
+    def update_todo!(clean: true)
       # Atomically swap notifications with empty hash to prevent data loss
       # Notifications added during file I/O will be collected in the new empty hash
       notifications_to_save = mutex.synchronize do
@@ -63,16 +64,26 @@ module ProsopiteTodo
       todo_file = TodoFile.new(todo_file_path)
       initial_count = todo_file.entries.length
 
+      removed_count = 0
+      if clean
+        current_fingerprints = Scanner.extract_fingerprints(notifications_to_save)
+        removed_count = todo_file.filter_by_fingerprints!(current_fingerprints)
+      end
+
+      count_before_add = todo_file.entries.length
       Scanner.record_notifications(notifications_to_save, todo_file)
       todo_file.save
 
-      new_count = todo_file.entries.length - initial_count
+      added_count = todo_file.entries.length - count_before_add
 
-      if new_count.positive?
-        warn "[ProsopiteTodo] Added #{new_count} new N+1 entries to #{todo_file.path}"
+      if added_count.positive? || removed_count.positive?
+        messages = []
+        messages << "Added #{added_count} new" if added_count.positive?
+        messages << "Removed #{removed_count} resolved" if removed_count.positive?
+        warn "[ProsopiteTodo] #{messages.join(', ')} N+1 entries in #{todo_file.path}"
       end
 
-      new_count
+      { added: added_count, removed: removed_count }
     rescue SystemCallError, IOError => e
       # On failure, restore notifications to prevent data loss.
       # Note: If Scanner.record_notifications succeeded but save failed,

@@ -60,10 +60,16 @@ This creates a `.prosopite_todo.yaml` file in your project root with all current
 
 ### Updating the TODO file
 
-To add new N+1 detections without removing existing ones:
+To update the TODO file with new N+1 detections and remove resolved ones:
 
 ```bash
 bundle exec rake prosopite_todo:update
+```
+
+By default, this removes entries that are no longer detected. To keep existing entries:
+
+```bash
+PROSOPITE_TODO_CLEAN=0 bundle exec rake prosopite_todo:update
 ```
 
 ### Listing TODO entries

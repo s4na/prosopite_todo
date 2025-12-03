@@ -50,6 +50,15 @@ module ProsopiteTodo
       @entries = []
     end
 
+    # Filter entries to keep only those with fingerprints in the given set
+    # @param fingerprints [Set] set of fingerprints to keep
+    # @return [Integer] number of removed entries
+    def filter_by_fingerprints!(fingerprints)
+      original_count = entries.length
+      @entries = entries.select { |entry| fingerprints.include?(entry["fingerprint"]) }
+      original_count - @entries.length
+    end
+
     private
 
     def load_entries

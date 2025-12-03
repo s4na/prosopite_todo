@@ -16,14 +16,33 @@ module ProsopiteTodo
         output.puts "Generated #{todo_file.path} with #{todo_file.entries.length} entries"
       end
 
-      def update(output: $stdout)
+      def update(output: $stdout, clean: clean_enabled?)
         todo_file = ProsopiteTodo::TodoFile.new(ProsopiteTodo.todo_file_path)
 
         notifications = ProsopiteTodo.pending_notifications
+
+        removed_count = 0
+        if clean
+          current_fingerprints = ProsopiteTodo::Scanner.extract_fingerprints(notifications)
+          removed_count = todo_file.filter_by_fingerprints!(current_fingerprints)
+        end
+
+        count_before_add = todo_file.entries.length
         ProsopiteTodo::Scanner.record_notifications(notifications, todo_file)
         todo_file.save
 
-        output.puts "Updated #{todo_file.path} with #{todo_file.entries.length} total entries"
+        added_count = todo_file.entries.length - count_before_add
+
+        messages = ["Updated #{todo_file.path}"]
+        messages << "added #{added_count}" if added_count.positive?
+        messages << "removed #{removed_count}" if removed_count.positive?
+        messages << "(#{todo_file.entries.length} total entries)"
+        output.puts messages.join(", ")
+      end
+
+      def clean_enabled?
+        # Default to true unless explicitly disabled
+        !%w[0 false no].include?(ENV.fetch("PROSOPITE_TODO_CLEAN", nil)&.downcase)
       end
 
       def list(output: $stdout)
@@ -46,32 +65,10 @@ module ProsopiteTodo
         todo_file = ProsopiteTodo::TodoFile.new(ProsopiteTodo.todo_file_path)
         notifications = ProsopiteTodo.pending_notifications
 
-        # Build set of current fingerprints
-        current_fingerprints = Set.new
-        notifications.each do |query, locations_array|
-          locations_array.each do |location|
-            fp = ProsopiteTodo::Scanner.fingerprint(query: query, location: location)
-            current_fingerprints << fp
-          end
-        end
-
-        # Filter entries to keep only those still detected
-        original_count = todo_file.entries.length
-        kept_entries = todo_file.entries.select do |entry|
-          current_fingerprints.include?(entry["fingerprint"])
-        end
-
-        todo_file.clear
-        kept_entries.each do |entry|
-          todo_file.add_entry(
-            fingerprint: entry["fingerprint"],
-            query: entry["query"],
-            location: entry["location"]
-          )
-        end
+        current_fingerprints = ProsopiteTodo::Scanner.extract_fingerprints(notifications)
+        removed_count = todo_file.filter_by_fingerprints!(current_fingerprints)
         todo_file.save
 
-        removed_count = original_count - todo_file.entries.length
         output.puts "Cleaned #{todo_file.path}: removed #{removed_count} entries, #{todo_file.entries.length} remaining"
       end
     end
