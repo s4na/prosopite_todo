@@ -7,6 +7,8 @@ gemspec
 
 gem "rake", "~> 13.0"
 gem "rspec", "~> 3.0"
+gem "simplecov", require: false
+gem "simplecov-lcov", require: false
 
 # Allow specifying Rails version via environment variable for CI matrix
 rails_version = ENV.fetch("RAILS_VERSION", nil)
