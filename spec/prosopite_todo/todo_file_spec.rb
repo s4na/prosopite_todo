@@ -260,6 +260,30 @@ RSpec.describe ProsopiteTodo::TodoFile do
     end
   end
 
+  describe "#test_locations" do
+    let(:todo_file) { described_class.new(todo_file_path) }
+
+    it "returns empty set when no entries have test_location" do
+      todo_file.add_entry(fingerprint: "fp1", query: "SELECT 1", location: "file1.rb:1")
+      expect(todo_file.test_locations).to eq(Set.new)
+    end
+
+    it "returns set of unique test locations" do
+      todo_file.add_entry(fingerprint: "fp1", query: "SELECT 1", location: "file1.rb:1", test_location: "spec/a_spec.rb")
+      todo_file.add_entry(fingerprint: "fp2", query: "SELECT 2", location: "file2.rb:2", test_location: "spec/b_spec.rb")
+      todo_file.add_entry(fingerprint: "fp3", query: "SELECT 3", location: "file3.rb:3", test_location: "spec/a_spec.rb")
+
+      expect(todo_file.test_locations).to eq(Set.new(["spec/a_spec.rb", "spec/b_spec.rb"]))
+    end
+
+    it "excludes empty string test_locations" do
+      todo_file.add_entry(fingerprint: "fp1", query: "SELECT 1", location: "file1.rb:1", test_location: "spec/a_spec.rb")
+      todo_file.add_entry(fingerprint: "fp2", query: "SELECT 2", location: "file2.rb:2", test_location: "")
+
+      expect(todo_file.test_locations).to eq(Set.new(["spec/a_spec.rb"]))
+    end
+  end
+
   describe "#filter_by_fingerprints!" do
     let(:todo_file) { described_class.new(todo_file_path) }
 

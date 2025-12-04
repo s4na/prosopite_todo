@@ -24,7 +24,8 @@ module ProsopiteTodo
         removed_count = 0
         if clean
           current_fingerprints = ProsopiteTodo::Scanner.extract_fingerprints(notifications)
-          removed_count = todo_file.filter_by_fingerprints!(current_fingerprints)
+          current_test_locations = ProsopiteTodo::Scanner.extract_test_locations(notifications)
+          removed_count = todo_file.filter_by_test_locations!(current_fingerprints, current_test_locations)
         end
 
         count_before_add = todo_file.entries.length
@@ -66,7 +67,8 @@ module ProsopiteTodo
         notifications = ProsopiteTodo.pending_notifications
 
         current_fingerprints = ProsopiteTodo::Scanner.extract_fingerprints(notifications)
-        removed_count = todo_file.filter_by_fingerprints!(current_fingerprints)
+        current_test_locations = ProsopiteTodo::Scanner.extract_test_locations(notifications)
+        removed_count = todo_file.filter_by_test_locations!(current_fingerprints, current_test_locations)
         todo_file.save
 
         output.puts "Cleaned #{todo_file.path}: removed #{removed_count} entries, #{todo_file.entries.length} remaining"

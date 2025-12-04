@@ -18,6 +18,10 @@ module ProsopiteTodo
     # before multi-threaded execution begins. This is standard Ruby practice.
     attr_writer :todo_file_path
 
+    # Current test location for tracking which test detected the N+1
+    # Set by RSpec/test framework integration
+    attr_accessor :current_test_location
+
     def todo_file_path
       @todo_file_path || TodoFile.default_path
     end
@@ -27,7 +31,31 @@ module ProsopiteTodo
         return {} unless @pending_notifications
 
         # Return deep copy to prevent external mutation of internal state
-        @pending_notifications.transform_values(&:dup)
+        @pending_notifications.transform_values do |locations|
+          locations.map do |loc|
+            if loc.is_a?(Hash)
+              # Deep copy: also dup the hash contents
+              {
+                call_stack: deep_dup(loc[:call_stack]),
+                test_location: loc[:test_location]&.dup
+              }
+            else
+              deep_dup(loc)
+            end
+          end
+        end
+      end
+    end
+
+    # Deep duplicate for arrays and strings
+    def deep_dup(obj)
+      case obj
+      when Array
+        obj.map { |e| e.dup rescue e }
+      when String
+        obj.dup
+      else
+        obj
       end
     end
 
@@ -35,11 +63,21 @@ module ProsopiteTodo
       mutex.synchronize { @pending_notifications = notifications }
     end
 
-    def add_pending_notification(query:, locations:)
+    # Add a pending notification with test_location support
+    # @param query [String] the SQL query
+    # @param locations [Array] array of call stack locations
+    # @param test_location [String, nil] the test file location (auto-detected if nil)
+    def add_pending_notification(query:, locations:, test_location: nil)
+      test_loc = test_location || current_test_location || detect_test_location
       mutex.synchronize do
         @pending_notifications ||= {}
         @pending_notifications[query] ||= []
-        @pending_notifications[query].concat(Array(locations))
+        Array(locations).each do |location|
+          @pending_notifications[query] << {
+            call_stack: location,
+            test_location: test_loc
+          }
+        end
       end
     end
 
@@ -47,27 +85,78 @@ module ProsopiteTodo
       mutex.synchronize { @pending_notifications = {} }
     end
 
+    # Track all executed test locations (not just those with N+1 detections)
+    # This allows proper cleanup when tests run but detect no N+1s
+    def executed_test_locations
+      mutex.synchronize { @executed_test_locations ||= Set.new }
+    end
+
+    # Register a test location as executed
+    # @param test_location [String] the test file location (e.g., "spec/models/user_spec.rb:10")
+    def register_executed_test(test_location)
+      return if test_location.nil? || test_location.to_s.empty?
+
+      # Normalize: remove line number for grouping by test file
+      normalized = Scanner.send(:normalize_test_location, test_location)
+      return unless normalized
+
+      mutex.synchronize do
+        @executed_test_locations ||= Set.new
+        @executed_test_locations << normalized
+      end
+    end
+
+    def clear_executed_test_locations
+      mutex.synchronize { @executed_test_locations = Set.new }
+    end
+
+    # Detect test location from caller stack
+    # Looks for spec/ or test/ directories in the call stack
+    # Uses stricter pattern to avoid false positives (e.g., "/users/spec/")
+    def detect_test_location
+      caller_locations.each do |loc|
+        path = loc.path
+        next unless path
+
+        # Normalize path for cross-platform compatibility
+        normalized_path = path.gsub("\\", "/")
+
+        # Match spec/ or test/ directory at start or after a slash
+        # This avoids matching paths like "/users/spec/code.rb"
+        if normalized_path.match?(%r{(?:^|/)(?:spec|test)/})
+          return "#{path}:#{loc.lineno}"
+        end
+      end
+      nil
+    end
+
     # Update TODO file with pending notifications
-    # @param clean [Boolean] if true, also removes entries that are no longer detected (default: true)
+    # @param clean [Boolean] if true, removes entries for tests that were run but no longer detect N+1 (default: true)
     # Returns a hash with :added and :removed counts
     # Raises ProsopiteTodo::Error if file operations fail
     # Thread-safe: uses atomic swap pattern to prevent data loss
+    #
+    # Note: When clean is true, only entries for tests that were actually run are candidates for removal.
+    # Entries from tests that were NOT run are preserved. This allows partial test runs without losing
+    # N+1 entries from other tests.
     def update_todo!(clean: true)
-      # Atomically swap notifications with empty hash to prevent data loss
-      # Notifications added during file I/O will be collected in the new empty hash
-      notifications_to_save = mutex.synchronize do
-        old = @pending_notifications || {}
+      # Atomically swap notifications and executed_test_locations to prevent data loss
+      notifications_to_save, test_locations_to_use = mutex.synchronize do
+        old_notifications = @pending_notifications || {}
+        old_test_locations = @executed_test_locations || Set.new
         @pending_notifications = {}
-        old
+        @executed_test_locations = Set.new
+        [old_notifications, old_test_locations]
       end
 
       todo_file = TodoFile.new(todo_file_path)
-      initial_count = todo_file.entries.length
 
       removed_count = 0
       if clean
         current_fingerprints = Scanner.extract_fingerprints(notifications_to_save)
-        removed_count = todo_file.filter_by_fingerprints!(current_fingerprints)
+        # Use executed_test_locations (all tests that ran) instead of just those with N+1s
+        # This ensures cleanup works even when all N+1s are resolved
+        removed_count = todo_file.filter_by_test_locations!(current_fingerprints, test_locations_to_use)
       end
 
       count_before_add = todo_file.entries.length
@@ -85,7 +174,7 @@ module ProsopiteTodo
 
       { added: added_count, removed: removed_count }
     rescue SystemCallError, IOError => e
-      # On failure, restore notifications to prevent data loss.
+      # On failure, restore notifications and executed_test_locations to prevent data loss.
       # Note: If Scanner.record_notifications succeeded but save failed,
       # notifications may exist in both TodoFile (in-memory) and here.
       # This is safe because TodoFile.add_entry uses fingerprint-based
@@ -96,6 +185,9 @@ module ProsopiteTodo
           @pending_notifications[query] ||= []
           @pending_notifications[query].concat(locations)
         end
+        # Restore executed test locations
+        @executed_test_locations ||= Set.new
+        @executed_test_locations.merge(test_locations_to_use)
       end
       raise Error, "Failed to update TODO file: #{e.message}"
     end

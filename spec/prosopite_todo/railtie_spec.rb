@@ -120,11 +120,12 @@ RSpec.describe ProsopiteTodo::Railtie do
         expect(notifications.keys.length).to eq(1)
         expect(notifications.keys.first).to eq("SELECT * FROM users WHERE id = 1")
 
-        # The location should be wrapped as a single entry (array of arrays)
+        # The location should be wrapped as a single entry with call_stack and test_location
         locations = notifications["SELECT * FROM users WHERE id = 1"]
         expect(locations.length).to eq(1)
-        expect(locations.first).to be_an(Array)
-        expect(locations.first.length).to eq(6)
+        expect(locations.first).to be_a(Hash)
+        expect(locations.first[:call_stack]).to be_an(Array)
+        expect(locations.first[:call_stack].length).to eq(6)
       end
 
       it "handles multiple N+1 queries in single notification" do

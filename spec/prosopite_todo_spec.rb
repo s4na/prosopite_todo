@@ -58,9 +58,74 @@ RSpec.describe ProsopiteTodo do
     it "handles single location (not wrapped in array)" do
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM users",
-        locations: ["app/models/user.rb:10"]
+        locations: ["app/models/user.rb:10"],
+        test_location: "spec/models/user_spec.rb"
       )
-      expect(ProsopiteTodo.pending_notifications["SELECT * FROM users"]).to include("app/models/user.rb:10")
+      notifications = ProsopiteTodo.pending_notifications["SELECT * FROM users"]
+      expect(notifications.first[:call_stack]).to eq("app/models/user.rb:10")
+    end
+
+    it "includes test_location in notifications" do
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]],
+        test_location: "spec/models/user_spec.rb"
+      )
+      notifications = ProsopiteTodo.pending_notifications["SELECT * FROM users"]
+      expect(notifications.first[:test_location]).to eq("spec/models/user_spec.rb")
+    end
+  end
+
+  describe ".detect_test_location" do
+    it "returns a test location when called from spec directory" do
+      result = ProsopiteTodo.detect_test_location
+      # When called from a spec file, it should find the test location
+      expect(result).to be_a(String)
+      expect(result).to include("spec/")
+    end
+
+    it "returns nil when no spec/test paths in caller stack" do
+      # Mock caller_locations to return non-test paths
+      allow(ProsopiteTodo).to receive(:caller_locations).and_return([
+        double(path: "/usr/lib/ruby/gems/active_support.rb", lineno: 10),
+        double(path: "/app/models/user.rb", lineno: 20),
+        double(path: "/app/controllers/application_controller.rb", lineno: 30)
+      ])
+
+      result = ProsopiteTodo.detect_test_location
+      expect(result).to be_nil
+    end
+
+    it "returns nil when path is nil" do
+      allow(ProsopiteTodo).to receive(:caller_locations).and_return([
+        double(path: nil, lineno: 10)
+      ])
+
+      result = ProsopiteTodo.detect_test_location
+      expect(result).to be_nil
+    end
+  end
+
+  describe ".deep_dup" do
+    it "returns the same object for non-Array/String types" do
+      # Test the else branch at line 58
+      expect(ProsopiteTodo.deep_dup(123)).to eq(123)
+      expect(ProsopiteTodo.deep_dup(nil)).to be_nil
+      expect(ProsopiteTodo.deep_dup(true)).to eq(true)
+    end
+
+    it "duplicates arrays" do
+      arr = ["a", "b"]
+      result = ProsopiteTodo.deep_dup(arr)
+      expect(result).to eq(arr)
+      expect(result).not_to be(arr)
+    end
+
+    it "duplicates strings" do
+      str = "test"
+      result = ProsopiteTodo.deep_dup(str)
+      expect(result).to eq(str)
+      expect(result).not_to be(str)
     end
   end
 
@@ -75,6 +140,46 @@ RSpec.describe ProsopiteTodo do
     end
   end
 
+  describe ".executed_test_locations" do
+    it "returns a Set" do
+      expect(ProsopiteTodo.executed_test_locations).to be_a(Set)
+    end
+
+    it "tracks registered test locations" do
+      # Note: RSpec integration registers current test automatically
+      initial_size = ProsopiteTodo.executed_test_locations.size
+
+      ProsopiteTodo.register_executed_test("spec/models/user_spec.rb:10")
+      ProsopiteTodo.register_executed_test("spec/models/post_spec.rb:20")
+
+      # Line numbers are normalized away
+      locations = ProsopiteTodo.executed_test_locations
+      expect(locations).to include("spec/models/user_spec.rb")
+      expect(locations).to include("spec/models/post_spec.rb")
+      expect(locations.size).to be >= initial_size + 2
+    end
+
+    it "ignores nil test locations" do
+      initial_size = ProsopiteTodo.executed_test_locations.size
+      ProsopiteTodo.register_executed_test(nil)
+      expect(ProsopiteTodo.executed_test_locations.size).to eq(initial_size)
+    end
+
+    it "ignores empty string test locations" do
+      initial_size = ProsopiteTodo.executed_test_locations.size
+      ProsopiteTodo.register_executed_test("")
+      expect(ProsopiteTodo.executed_test_locations.size).to eq(initial_size)
+    end
+  end
+
+  describe ".clear_executed_test_locations" do
+    it "clears all executed test locations" do
+      ProsopiteTodo.register_executed_test("spec/models/user_spec.rb:10")
+      ProsopiteTodo.clear_executed_test_locations
+      expect(ProsopiteTodo.executed_test_locations).to eq(Set.new)
+    end
+  end
+
   describe ".update_todo!" do
     let(:temp_dir) { Dir.mktmpdir }
     let(:todo_path) { File.join(temp_dir, ".prosopite_todo.yaml") }
@@ -85,6 +190,7 @@ RSpec.describe ProsopiteTodo do
 
     after do
       ProsopiteTodo.clear_pending_notifications
+      ProsopiteTodo.clear_executed_test_locations
       ProsopiteTodo.todo_file_path = nil
       FileUtils.rm_rf(temp_dir)
     end
@@ -103,19 +209,25 @@ RSpec.describe ProsopiteTodo do
     end
 
     it "adds new entries and removes old ones by default (clean: true)" do
+      test_location = "spec/test_spec.rb"
+
       # Create initial entry
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM users WHERE id = ?",
-        locations: [["app/models/user.rb:10"]]
+        locations: [["app/models/user.rb:10"]],
+        test_location: test_location
       )
+      ProsopiteTodo.register_executed_test(test_location)
       ProsopiteTodo.update_todo!
-      # Note: pending notifications are automatically cleared after save
+      # Note: pending notifications and executed_test_locations are automatically cleared after save
 
       # Add another entry (first one will be removed because clean: true is default)
       ProsopiteTodo.add_pending_notification(
         query: "SELECT * FROM posts WHERE user_id = ?",
-        locations: [["app/models/post.rb:20"]]
+        locations: [["app/models/post.rb:20"]],
+        test_location: test_location
       )
+      ProsopiteTodo.register_executed_test(test_location)
       ProsopiteTodo.update_todo!
 
       todo_file = ProsopiteTodo::TodoFile.new(todo_path)
@@ -269,18 +381,24 @@ RSpec.describe ProsopiteTodo do
       end
 
       it "removes entries no longer detected" do
+        test_location = "spec/test_spec.rb"
+
         # Create initial entry
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM users",
-          locations: [["app/models/user.rb:10"]]
+          locations: [["app/models/user.rb:10"]],
+          test_location: test_location
         )
+        ProsopiteTodo.register_executed_test(test_location)
         ProsopiteTodo.update_todo!
 
         # Second update with different notification (simulating N+1 was fixed)
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM posts",
-          locations: [["app/models/post.rb:20"]]
+          locations: [["app/models/post.rb:20"]],
+          test_location: test_location
         )
+        ProsopiteTodo.register_executed_test(test_location)
         result = ProsopiteTodo.update_todo!(clean: true)
 
         expect(result[:added]).to eq(1)
@@ -291,7 +409,7 @@ RSpec.describe ProsopiteTodo do
         expect(todo_file.entries.first["query"]).to eq("SELECT * FROM posts")
       end
 
-      it "removes all entries when no pending notifications" do
+      it "preserves entries when no pending notifications (no tests run)" do
         # Create initial entry
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM users",
@@ -299,9 +417,68 @@ RSpec.describe ProsopiteTodo do
         )
         ProsopiteTodo.update_todo!
 
-        # Update with clean and no pending notifications (all N+1s fixed)
+        # Update with clean but no pending notifications
+        # Since no tests were run, entries should be preserved
         result = ProsopiteTodo.update_todo!(clean: true)
 
+        expect(result[:removed]).to eq(0)
+        expect(result[:added]).to eq(0)
+
+        todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+        expect(todo_file.entries.length).to eq(1)
+      end
+
+      it "removes entries when tests run but detect no N+1" do
+        test_location = "spec/prosopite_todo_spec.rb"
+
+        # Create initial entry with test_location
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM users",
+          locations: [["app/models/user.rb:10"]],
+          test_location: test_location
+        )
+        ProsopiteTodo.register_executed_test(test_location)
+        ProsopiteTodo.update_todo!
+
+        # Simulate: same test ran but detected a different N+1
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM posts",
+          locations: [["app/models/post.rb:20"]],
+          test_location: test_location
+        )
+        ProsopiteTodo.register_executed_test(test_location)
+        result = ProsopiteTodo.update_todo!(clean: true)
+
+        expect(result[:removed]).to eq(1)
+        expect(result[:added]).to eq(1)
+
+        todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+        expect(todo_file.entries.length).to eq(1)
+        expect(todo_file.entries.first["query"]).to eq("SELECT * FROM posts")
+      end
+
+      it "removes entries when all tests run and all N+1s are resolved (zero notifications)" do
+        test_location = "spec/models/user_spec.rb"
+
+        # Create initial entry with test_location
+        ProsopiteTodo.add_pending_notification(
+          query: "SELECT * FROM users",
+          locations: [["app/models/user.rb:10"]],
+          test_location: test_location
+        )
+        ProsopiteTodo.update_todo!
+
+        todo_file = ProsopiteTodo::TodoFile.new(todo_path)
+        expect(todo_file.entries.length).to eq(1)
+
+        # Simulate: same test ran but detected ZERO N+1s (all resolved)
+        # No add_pending_notification calls, but we register the test as executed
+        ProsopiteTodo.register_executed_test(test_location)
+        result = ProsopiteTodo.update_todo!(clean: true)
+
+        # The entry should be removed because:
+        # 1. The test was registered as executed
+        # 2. No new N+1 was detected for that test
         expect(result[:removed]).to eq(1)
         expect(result[:added]).to eq(0)
 
@@ -332,18 +509,24 @@ RSpec.describe ProsopiteTodo do
       end
 
       it "outputs message for added and removed entries" do
+        test_location = "spec/test_spec.rb"
+
         # Create initial entry
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM users",
-          locations: [["app/models/user.rb:10"]]
+          locations: [["app/models/user.rb:10"]],
+          test_location: test_location
         )
+        ProsopiteTodo.register_executed_test(test_location)
         ProsopiteTodo.update_todo!
 
         # Update with different notification
         ProsopiteTodo.add_pending_notification(
           query: "SELECT * FROM posts",
-          locations: [["app/models/post.rb:20"]]
+          locations: [["app/models/post.rb:20"]],
+          test_location: test_location
         )
+        ProsopiteTodo.register_executed_test(test_location)
 
         expect { ProsopiteTodo.update_todo!(clean: true) }
           .to output(/Added 1 new.*Removed 1 resolved/).to_stderr
