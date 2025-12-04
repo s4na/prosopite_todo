@@ -167,7 +167,7 @@ PROSOPITE_TODO_UPDATE=1 bundle exec rspec spec/models/ --pattern "*_spec.rb"
 
 ## 仕組み
 
-1. **フィンガープリント**: 各 N+1 クエリは SQL クエリとコールスタックの位置に基づくフィンガープリントで識別されます
+1. **フィンガープリント**: 各 N+1 クエリは正規化された SQL クエリのみに基づくフィンガープリントで識別されます（位置情報は含まれません）。これにより、同じ N+1 クエリを発生させる複数のコード位置を1つのエントリにまとめることができます。
 2. **フィルタリング**: Prosopite が N+1 クエリを検出すると、ProsopiteTodo は `.prosopite_todo.yaml` 内のエントリに一致するものを除外します
 3. **永続化**: TODO ファイルは人間が読める YAML ファイルで、バージョン管理にコミットできます
 
@@ -177,11 +177,17 @@ PROSOPITE_TODO_UPDATE=1 bundle exec rspec spec/models/ --pattern "*_spec.rb"
 ---
 - fingerprint: "a1b2c3d4e5f67890"
   query: SELECT "users".* FROM "users" WHERE "users"."id" = $1
-  location: app/models/post.rb:10 -> app/controllers/posts_controller.rb:5
+  locations:
+    - location: app/models/post.rb:10 -> app/controllers/posts_controller.rb:5
+      test_location: spec/models/post_spec.rb
   created_at: "2024-01-15T10:30:00Z"
 - fingerprint: "0987654321fedcba"
   query: SELECT "comments".* FROM "comments" WHERE "comments"."post_id" = $1
-  location: app/models/comment.rb:20 -> app/views/posts/show.html.erb:15
+  locations:
+    - location: app/models/comment.rb:20 -> app/views/posts/show.html.erb:15
+      test_location: spec/views/posts/show_spec.rb
+    - location: app/controllers/comments_controller.rb:8
+      test_location: spec/controllers/comments_controller_spec.rb
   created_at: "2024-01-15T10:30:00Z"
 ```
 
