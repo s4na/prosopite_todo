@@ -24,8 +24,13 @@ module ProsopiteTodo
         removed_count = 0
         if clean
           detected_locations = ProsopiteTodo::Scanner.extract_detected_locations(notifications)
-          current_test_locations = ProsopiteTodo::Scanner.extract_test_locations(notifications)
-          removed_count = todo_file.filter_by_test_locations!(detected_locations, current_test_locations)
+          # Use executed_test_locations if available (RSpec context), otherwise fall back to
+          # test locations from notifications (Rake task context)
+          test_locations_to_use = ProsopiteTodo.executed_test_locations
+          if test_locations_to_use.empty?
+            test_locations_to_use = ProsopiteTodo::Scanner.extract_test_locations(notifications)
+          end
+          removed_count = todo_file.filter_by_test_locations!(detected_locations, test_locations_to_use)
         end
 
         count_before_add = todo_file.entries.length
@@ -70,8 +75,13 @@ module ProsopiteTodo
         notifications = ProsopiteTodo.pending_notifications
 
         detected_locations = ProsopiteTodo::Scanner.extract_detected_locations(notifications)
-        current_test_locations = ProsopiteTodo::Scanner.extract_test_locations(notifications)
-        removed_count = todo_file.filter_by_test_locations!(detected_locations, current_test_locations)
+        # Use executed_test_locations if available (RSpec context), otherwise fall back to
+        # test locations from notifications (Rake task context)
+        test_locations_to_use = ProsopiteTodo.executed_test_locations
+        if test_locations_to_use.empty?
+          test_locations_to_use = ProsopiteTodo::Scanner.extract_test_locations(notifications)
+        end
+        removed_count = todo_file.filter_by_test_locations!(detected_locations, test_locations_to_use)
         todo_file.save
 
         output.puts "Cleaned #{todo_file.path}: removed #{removed_count} locations, #{todo_file.entries.length} entries remaining"

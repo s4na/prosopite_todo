@@ -122,6 +122,9 @@ module ProsopiteTodo
             true
           elsif test_locations.include?(loc_test)
             # This location's test was run - keep only if still detected
+            # Note: We intentionally match only fingerprint + location, not test_location.
+            # The same location can be detected by multiple tests, and we want to keep
+            # the location if it's detected by ANY test, not just the original one.
             detected_locations.any? do |det|
               det[:fingerprint] == entry["fingerprint"] &&
                 det[:location] == loc["location"]

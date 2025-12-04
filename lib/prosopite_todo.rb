@@ -168,7 +168,7 @@ module ProsopiteTodo
       if added_count.positive? || removed_count.positive?
         messages = []
         messages << "Added #{added_count} new" if added_count.positive?
-        messages << "Removed #{removed_count} resolved" if removed_count.positive?
+        messages << "Removed #{removed_count} resolved locations" if removed_count.positive?
         warn "[ProsopiteTodo] #{messages.join(', ')} N+1 entries in #{todo_file.path}"
       end
 
