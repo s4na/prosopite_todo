@@ -100,11 +100,15 @@ RSpec.describe ProsopiteTodo::TodoFile do
           ---
           - fingerprint: "abc123"
             query: "SELECT * FROM users"
-            location: "app/models/user.rb:10"
+            locations:
+              - location: "app/models/user.rb:10"
+                test_location: null
             created_at: "2024-01-01T00:00:00Z"
           - fingerprint: "def456"
             query: "SELECT * FROM posts"
-            location: "app/models/post.rb:20"
+            locations:
+              - location: "app/models/post.rb:20"
+                test_location: null
             created_at: "2024-01-01T00:00:00Z"
         YAML
       end
@@ -127,8 +131,10 @@ RSpec.describe ProsopiteTodo::TodoFile do
         ---
         - fingerprint: "abc123"
           query: "SELECT * FROM users"
+          locations: []
         - fingerprint: "def456"
           query: "SELECT * FROM posts"
+          locations: []
       YAML
     end
 
@@ -144,6 +150,7 @@ RSpec.describe ProsopiteTodo::TodoFile do
         ---
         - fingerprint: "abc123"
           query: "SELECT * FROM users"
+          locations: []
       YAML
     end
 
@@ -159,7 +166,7 @@ RSpec.describe ProsopiteTodo::TodoFile do
   end
 
   describe "#add_entry" do
-    it "adds a new entry to the file" do
+    it "adds a new entry with location to the file" do
       todo_file = described_class.new(todo_file_path)
 
       todo_file.add_entry(
@@ -171,15 +178,27 @@ RSpec.describe ProsopiteTodo::TodoFile do
       expect(todo_file.entries.length).to eq(1)
       expect(todo_file.entries[0]["fingerprint"]).to eq("new123")
       expect(todo_file.entries[0]["query"]).to eq("SELECT * FROM comments")
+      expect(todo_file.entries[0]["locations"].first["location"]).to eq("app/models/comment.rb:5")
     end
 
-    it "does not add duplicate fingerprints" do
+    it "adds location to existing entry with same fingerprint" do
       todo_file = described_class.new(todo_file_path)
 
-      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1")
-      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1")
+      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1", location: "file1.rb:1")
+      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1", location: "file2.rb:2")
 
       expect(todo_file.entries.length).to eq(1)
+      expect(todo_file.entries[0]["locations"].length).to eq(2)
+    end
+
+    it "does not add duplicate locations" do
+      todo_file = described_class.new(todo_file_path)
+
+      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1", location: "file1.rb:1")
+      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1", location: "file1.rb:1")
+
+      expect(todo_file.entries.length).to eq(1)
+      expect(todo_file.entries[0]["locations"].length).to eq(1)
     end
   end
 

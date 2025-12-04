@@ -6,27 +6,13 @@ require "set"
 module ProsopiteTodo
   class Scanner
     class << self
-      # Generate a unique fingerprint for an N+1 query detection
+      # Generate a unique fingerprint for an N+1 query
+      # Fingerprint is based on the normalized query only (not location)
+      # This allows grouping multiple locations under the same query entry
       # @param query [String] the SQL query
-      # @param location [Array, String] the call stack location
-      # @param test_location [String, nil] the test file location
-      def fingerprint(query:, location:, test_location: nil)
-        cleaned_location = clean_location(location)
-        normalized_location = normalize_location(cleaned_location)
+      def fingerprint(query:)
         normalized_query = normalize_query(query)
-        normalized_test_location = normalize_test_location(test_location)
-        content = "#{normalized_query}|#{normalized_location}|#{normalized_test_location}"
-        Digest::SHA256.hexdigest(content)[0, 16]
-      end
-
-      # Generate legacy fingerprint (without test_location) for backward compatibility
-      # Used to check if an entry already exists in old format
-      def legacy_fingerprint(query:, location:)
-        cleaned_location = clean_location(location)
-        normalized_location = normalize_location(cleaned_location)
-        normalized_query = normalize_query(query)
-        content = "#{normalized_query}|#{normalized_location}"
-        Digest::SHA256.hexdigest(content)[0, 16]
+        Digest::SHA256.hexdigest(normalized_query)[0, 16]
       end
 
       # Normalize query by replacing literals with placeholders
@@ -70,22 +56,23 @@ module ProsopiteTodo
             # Prosopite format: single notification per entry
             query = query_key.first
             call_stack = Array(locations_value)
-            # For Prosopite format, test_location is extracted from pending_notifications
-            # This is used for filtering only, not for recording
-            fp = fingerprint(query: query, location: call_stack, test_location: nil)
+            fp = fingerprint(query: query)
+            normalized_location = normalize_location(clean_location(call_stack))
 
-            unless todo_file.ignored?(fp)
+            # Check if this specific location is already in TODO
+            unless todo_file.location_exists?(fp, normalized_location)
               result[query_key] = locations_value
             end
           else
             # Internal format: multiple locations per query (with test_location)
             query = query_key
             locations_array = locations_value
+            fp = fingerprint(query: query)
+
             filtered_locations = locations_array.reject do |loc_entry|
               call_stack = extract_call_stack(loc_entry)
-              test_loc = extract_test_location(loc_entry)
-              fp = fingerprint(query: query, location: call_stack, test_location: test_loc)
-              todo_file.ignored?(fp)
+              normalized_location = normalize_location(clean_location(call_stack))
+              todo_file.location_exists?(fp, normalized_location)
             end
 
             result[query] = filtered_locations unless filtered_locations.empty?
@@ -97,18 +84,14 @@ module ProsopiteTodo
 
       def record_notifications(notifications, todo_file)
         notifications.each do |query, locations_array|
+          normalized_query = normalize_query(query)
+          fp = fingerprint(query: query)
+
           locations_array.each do |loc_entry|
             call_stack = extract_call_stack(loc_entry)
             test_loc = extract_test_location(loc_entry)
-            fp = fingerprint(query: query, location: call_stack, test_location: test_loc)
-
-            # Also check legacy fingerprint for backward compatibility
-            # Skip if an entry with the same query+location exists (even without test_location)
-            legacy_fp = legacy_fingerprint(query: query, location: call_stack)
-            next if todo_file.legacy_fingerprints.include?(legacy_fp)
 
             cleaned_location = clean_location(call_stack)
-            normalized_query = normalize_query(query)
             todo_file.add_entry(
               fingerprint: fp,
               query: normalized_query,
@@ -124,14 +107,31 @@ module ProsopiteTodo
       # @return [Set] set of fingerprints
       def extract_fingerprints(notifications)
         fingerprints = Set.new
+        notifications.each do |query, _locations_array|
+          fingerprints << fingerprint(query: query)
+        end
+        fingerprints
+      end
+
+      # Extract detected locations from notifications for cleanup
+      # @param notifications [Hash] query => locations_array
+      # @return [Set<Hash>] set of {fingerprint:, location:, test_location:} hashes
+      def extract_detected_locations(notifications)
+        locations = Set.new
         notifications.each do |query, locations_array|
+          fp = fingerprint(query: query)
           locations_array.each do |loc_entry|
             call_stack = extract_call_stack(loc_entry)
             test_loc = extract_test_location(loc_entry)
-            fingerprints << fingerprint(query: query, location: call_stack, test_location: test_loc)
+            cleaned_location = clean_location(call_stack)
+            locations << {
+              fingerprint: fp,
+              location: normalize_location(cleaned_location),
+              test_location: normalize_test_location(test_loc)
+            }
           end
         end
-        fingerprints
+        locations
       end
 
       # Extract test locations from notifications

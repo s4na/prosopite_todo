@@ -126,7 +126,7 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
 
     it "does not duplicate existing entries" do
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
-      fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"], test_location: test_location)
+      fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users")
       todo_file.add_entry(
         fingerprint: fp,
         query: "SELECT * FROM users",
@@ -145,6 +145,8 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
 
       reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
       expect(reloaded.entries.length).to eq(1)
+      # Should have 1 location (no duplicates)
+      expect(reloaded.entries.first["locations"].length).to eq(1)
     end
 
     it "creates file when no existing file and no pending notifications" do
@@ -155,10 +157,10 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
     end
 
     context "with clean option" do
-      it "removes entries no longer detected when clean: true" do
+      it "removes locations no longer detected when clean: true" do
         # Create initial entry with test_location
         todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
-        fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"], test_location: test_location)
+        fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users")
         todo_file.add_entry(
           fingerprint: fp,
           query: "SELECT * FROM users",
@@ -176,7 +178,7 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
 
         described_class.update(output: output, clean: true)
 
-        expect(output.string).to include("removed 1")
+        expect(output.string).to include("removed 1 locations")
         expect(output.string).to include("added 1")
         reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
         expect(reloaded.entries.length).to eq(1)
@@ -186,7 +188,7 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
       it "keeps entries when clean: false" do
         # Create initial entry
         todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
-        fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"], test_location: test_location)
+        fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users")
         todo_file.add_entry(
           fingerprint: fp,
           query: "SELECT * FROM users",
@@ -211,8 +213,8 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
       it "preserves entries from tests that were not run" do
         # Create entries from different test files
         todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
-        fp1 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"], test_location: "spec/models/user_spec.rb")
-        fp2 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM posts", location: ["app/models/post.rb:10"], test_location: "spec/models/post_spec.rb")
+        fp1 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users")
+        fp2 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM posts")
         todo_file.add_entry(
           fingerprint: fp1,
           query: "SELECT * FROM users",
@@ -240,7 +242,8 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
         reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
         # user_spec.rb entry removed (not detected), post_spec.rb entry preserved, comment entry added
         expect(reloaded.entries.length).to eq(2)
-        expect(reloaded.entries.map { |e| e["test_location"] }).to contain_exactly("spec/models/post_spec.rb", "spec/models/user_spec.rb")
+        queries = reloaded.entries.map { |e| e["query"] }
+        expect(queries).to contain_exactly("SELECT * FROM posts", "SELECT * FROM comments")
       end
     end
 
@@ -287,7 +290,7 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
   end
 
   describe ".list" do
-    it "displays all todo entries with location and fingerprint" do
+    it "displays all todo entries with locations and fingerprint" do
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
       todo_file.add_entry(
         fingerprint: "abc123",
@@ -299,7 +302,7 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
       described_class.list(output: output)
 
       expect(output.string).to include("SELECT * FROM users")
-      expect(output.string).to include("Location: app/models/user.rb:10")
+      expect(output.string).to include("Location 1: app/models/user.rb:10")
       expect(output.string).to include("Fingerprint: abc123")
       expect(output.string).to include("Entries in")
     end
@@ -326,11 +329,11 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
   describe ".clean" do
     let(:test_location) { "spec/models/user_spec.rb" }
 
-    it "removes entries not in pending notifications" do
+    it "removes locations not in pending notifications" do
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
 
       # Entry that should be kept (matches pending)
-      keep_fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"], test_location: test_location)
+      keep_fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users")
       todo_file.add_entry(
         fingerprint: keep_fp,
         query: "SELECT * FROM users",
@@ -361,7 +364,7 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
       expect(reloaded.entries[0]["query"]).to eq("SELECT * FROM users")
     end
 
-    it "removes entries for tests that were run but detected nothing" do
+    it "removes locations for tests that were run but detected nothing" do
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
       todo_file.add_entry(
         fingerprint: "remove123",
@@ -380,11 +383,9 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
 
       described_class.clean(output: output)
 
-      expect(output.string).to include("removed 1 entries")
+      expect(output.string).to include("removed 1 locations")
       reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
-      # The old entry is removed, but the new one is NOT added by clean (clean only removes)
-      # Wait, clean also calls record_notifications... let me check the code again
-      # Actually clean just filters, doesn't add. So the entry count should be 0
+      # The old entry is removed (entry with no locations), and clean doesn't add new entries
       expect(reloaded.entries.length).to eq(0)
     end
 
@@ -413,14 +414,15 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
       expect(reloaded.entries[0]["query"]).to eq("SELECT * FROM legacy")
     end
 
-    it "handles multiple matching notifications" do
+    it "handles multiple locations for same query" do
       todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
 
-      fp1 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["file1.rb:1"], test_location: test_location)
-      fp2 = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users", location: ["file2.rb:2"], test_location: test_location)
+      # Same fingerprint (same query), multiple locations
+      fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users")
 
-      todo_file.add_entry(fingerprint: fp1, query: "SELECT * FROM users", location: "file1.rb:1", test_location: test_location)
-      todo_file.add_entry(fingerprint: fp2, query: "SELECT * FROM users", location: "file2.rb:2", test_location: test_location)
+      todo_file.add_entry(fingerprint: fp, query: "SELECT * FROM users", location: "file1.rb:1", test_location: test_location)
+      todo_file.add_entry(fingerprint: fp, query: "SELECT * FROM users", location: "file2.rb:2", test_location: test_location)
+      # Add an entry that should be removed
       todo_file.add_entry(fingerprint: "old123", query: "SELECT * FROM old", location: "old.rb:1", test_location: test_location)
       todo_file.save
 
@@ -433,7 +435,9 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
       described_class.clean(output: output)
 
       reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
-      expect(reloaded.entries.length).to eq(2)
+      # 1 entry (SELECT * FROM users) with 2 locations, old entry removed
+      expect(reloaded.entries.length).to eq(1)
+      expect(reloaded.entries.first["locations"].length).to eq(2)
     end
   end
 end

@@ -23,9 +23,9 @@ module ProsopiteTodo
 
         removed_count = 0
         if clean
-          current_fingerprints = ProsopiteTodo::Scanner.extract_fingerprints(notifications)
+          detected_locations = ProsopiteTodo::Scanner.extract_detected_locations(notifications)
           current_test_locations = ProsopiteTodo::Scanner.extract_test_locations(notifications)
-          removed_count = todo_file.filter_by_test_locations!(current_fingerprints, current_test_locations)
+          removed_count = todo_file.filter_by_test_locations!(detected_locations, current_test_locations)
         end
 
         count_before_add = todo_file.entries.length
@@ -36,7 +36,7 @@ module ProsopiteTodo
 
         messages = ["Updated #{todo_file.path}"]
         messages << "added #{added_count}" if added_count.positive?
-        messages << "removed #{removed_count}" if removed_count.positive?
+        messages << "removed #{removed_count} locations" if removed_count.positive?
         messages << "(#{todo_file.entries.length} total entries)"
         output.puts messages.join(", ")
       end
@@ -55,8 +55,11 @@ module ProsopiteTodo
           output.puts "Entries in #{todo_file.path}:\n\n"
           todo_file.entries.each_with_index do |entry, index|
             output.puts "#{index + 1}. #{entry['query']}"
-            output.puts "   Location: #{entry['location']}"
             output.puts "   Fingerprint: #{entry['fingerprint']}"
+            entry["locations"]&.each_with_index do |loc, loc_index|
+              output.puts "   Location #{loc_index + 1}: #{loc['location']}"
+              output.puts "     Test: #{loc['test_location']}" if loc["test_location"]
+            end
             output.puts ""
           end
         end
@@ -66,12 +69,12 @@ module ProsopiteTodo
         todo_file = ProsopiteTodo::TodoFile.new(ProsopiteTodo.todo_file_path)
         notifications = ProsopiteTodo.pending_notifications
 
-        current_fingerprints = ProsopiteTodo::Scanner.extract_fingerprints(notifications)
+        detected_locations = ProsopiteTodo::Scanner.extract_detected_locations(notifications)
         current_test_locations = ProsopiteTodo::Scanner.extract_test_locations(notifications)
-        removed_count = todo_file.filter_by_test_locations!(current_fingerprints, current_test_locations)
+        removed_count = todo_file.filter_by_test_locations!(detected_locations, current_test_locations)
         todo_file.save
 
-        output.puts "Cleaned #{todo_file.path}: removed #{removed_count} entries, #{todo_file.entries.length} remaining"
+        output.puts "Cleaned #{todo_file.path}: removed #{removed_count} locations, #{todo_file.entries.length} entries remaining"
       end
     end
   end

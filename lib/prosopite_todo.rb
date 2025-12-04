@@ -153,10 +153,10 @@ module ProsopiteTodo
 
       removed_count = 0
       if clean
-        current_fingerprints = Scanner.extract_fingerprints(notifications_to_save)
+        detected_locations = Scanner.extract_detected_locations(notifications_to_save)
         # Use executed_test_locations (all tests that ran) instead of just those with N+1s
         # This ensures cleanup works even when all N+1s are resolved
-        removed_count = todo_file.filter_by_test_locations!(current_fingerprints, test_locations_to_use)
+        removed_count = todo_file.filter_by_test_locations!(detected_locations, test_locations_to_use)
       end
 
       count_before_add = todo_file.entries.length

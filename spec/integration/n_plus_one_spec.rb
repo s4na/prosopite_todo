@@ -169,8 +169,8 @@ RSpec.describe "ProsopiteTodo Integration" do
         location1 = ["app/models/book.rb:10", "app/controllers/books_controller.rb:5"]
         location2 = ["app/models/book.rb:10", "app/controllers/books_controller.rb:8"]
 
-        fp1 = ProsopiteTodo::Scanner.fingerprint(query: query, location: location1)
-        todo_file.add_entry(fingerprint: fp1, query: query, location: location1.join(" -> "))
+        fp = ProsopiteTodo::Scanner.fingerprint(query: query)
+        todo_file.add_entry(fingerprint: fp, query: query, location: location1.join(" -> "))
         todo_file.save
 
         notifications = { query => [location1, location2] }
@@ -191,17 +191,18 @@ RSpec.describe "ProsopiteTodo Integration" do
       expect(File.exist?(todo_file_path)).to be true
 
       loaded = ProsopiteTodo::TodoFile.new(todo_file_path)
-      expect(loaded.entries.length).to eq(2)  # Two locations
+      # One entry (same query) with two locations
+      expect(loaded.entries.length).to eq(1)
+      expect(loaded.entries.first["locations"].length).to eq(2)
       expect(loaded.entries.first["query"]).to include("authors")
     end
 
     it "generates consistent fingerprints" do
       notifications = simulate_n_plus_one_notifications
       query = notifications.keys.first
-      location = notifications[query].first
 
-      fp1 = ProsopiteTodo::Scanner.fingerprint(query: query, location: location)
-      fp2 = ProsopiteTodo::Scanner.fingerprint(query: query, location: location)
+      fp1 = ProsopiteTodo::Scanner.fingerprint(query: query)
+      fp2 = ProsopiteTodo::Scanner.fingerprint(query: query)
 
       expect(fp1).to eq(fp2)
     end
@@ -210,8 +211,8 @@ RSpec.describe "ProsopiteTodo Integration" do
       n1 = simulate_n_plus_one_notifications
       n2 = simulate_different_n_plus_one_notifications
 
-      fp1 = ProsopiteTodo::Scanner.fingerprint(query: n1.keys.first, location: n1.values.first.first)
-      fp2 = ProsopiteTodo::Scanner.fingerprint(query: n2.keys.first, location: n2.values.first.first)
+      fp1 = ProsopiteTodo::Scanner.fingerprint(query: n1.keys.first)
+      fp2 = ProsopiteTodo::Scanner.fingerprint(query: n2.keys.first)
 
       expect(fp1).not_to eq(fp2)
     end
@@ -227,7 +228,9 @@ RSpec.describe "ProsopiteTodo Integration" do
       todo_file.clear
       ProsopiteTodo::Scanner.record_notifications(notifications, todo_file)
       todo_file.save
-      expect(todo_file.entries.length).to eq(2)
+      # One entry with 2 locations
+      expect(todo_file.entries.length).to eq(1)
+      expect(todo_file.entries.first["locations"].length).to eq(2)
 
       # Step 3: Reload and verify ignore works
       reloaded_todo = ProsopiteTodo::TodoFile.new(todo_file_path)
@@ -247,7 +250,7 @@ RSpec.describe "ProsopiteTodo Integration" do
       initial = simulate_n_plus_one_notifications
       ProsopiteTodo::Scanner.record_notifications(initial, todo_file)
       todo_file.save
-      initial_count = todo_file.entries.length
+      initial_count = todo_file.entries.length  # 1 entry
 
       # Add new notifications (simulating `prosopite_todo:update`)
       new_notifications = simulate_different_n_plus_one_notifications
@@ -273,7 +276,7 @@ RSpec.describe "ProsopiteTodo Integration" do
 
       expect(content).to include("fingerprint:")
       expect(content).to include("query:")
-      expect(content).to include("location:")
+      expect(content).to include("locations:")
       expect(content).to include("created_at:")
     end
 

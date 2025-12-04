@@ -304,10 +304,12 @@ RSpec.describe ProsopiteTodo do
       )
 
       result = ProsopiteTodo.update_todo!
-      expect(result[:added]).to eq(2)
+      # 1 entry added (same query), with 2 locations
+      expect(result[:added]).to eq(1)
 
       todo_file = ProsopiteTodo::TodoFile.new(todo_path)
-      expect(todo_file.entries.length).to eq(2)
+      expect(todo_file.entries.length).to eq(1)
+      expect(todo_file.entries.first["locations"].length).to eq(2)
     end
 
     it "handles call stack locations" do
@@ -320,7 +322,7 @@ RSpec.describe ProsopiteTodo do
 
       todo_file = ProsopiteTodo::TodoFile.new(todo_path)
       entry = todo_file.entries.first
-      expect(entry["location"]).to include("->")
+      expect(entry["locations"].first["location"]).to include("->")
     end
 
     it "clears pending notifications after successful save" do

@@ -91,154 +91,70 @@ RSpec.describe ProsopiteTodo::Scanner do
   end
 
   describe ".fingerprint" do
-    it "generates consistent fingerprint for same query and location" do
-      fp1 = described_class.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
-      fp2 = described_class.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+    it "generates consistent fingerprint for same query" do
+      fp1 = described_class.fingerprint(query: "SELECT * FROM users")
+      fp2 = described_class.fingerprint(query: "SELECT * FROM users")
 
       expect(fp1).to eq(fp2)
     end
 
     it "generates same fingerprint for queries with different numeric IDs" do
-      fp1 = described_class.fingerprint(query: "SELECT * FROM items WHERE parent_id = 10465", location: ["app/models/item.rb:10"])
-      fp2 = described_class.fingerprint(query: "SELECT * FROM items WHERE parent_id = 10466", location: ["app/models/item.rb:10"])
+      fp1 = described_class.fingerprint(query: "SELECT * FROM items WHERE parent_id = 10465")
+      fp2 = described_class.fingerprint(query: "SELECT * FROM items WHERE parent_id = 10466")
 
       expect(fp1).to eq(fp2)
     end
 
     it "generates different fingerprint for different queries" do
-      fp1 = described_class.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
-      fp2 = described_class.fingerprint(query: "SELECT * FROM posts", location: ["app/models/user.rb:10"])
+      fp1 = described_class.fingerprint(query: "SELECT * FROM users")
+      fp2 = described_class.fingerprint(query: "SELECT * FROM posts")
 
       expect(fp1).not_to eq(fp2)
     end
 
-    it "generates different fingerprint for different locations" do
-      fp1 = described_class.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
-      fp2 = described_class.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:20"])
+    it "generates same fingerprint regardless of location (location not in fingerprint)" do
+      fp1 = described_class.fingerprint(query: "SELECT * FROM users")
+      fp2 = described_class.fingerprint(query: "SELECT * FROM users")
 
-      expect(fp1).not_to eq(fp2)
+      expect(fp1).to eq(fp2)
     end
 
     it "returns 16 character hexadecimal string" do
-      fp = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"])
+      fp = described_class.fingerprint(query: "SELECT 1")
       expect(fp).to match(/\A[a-f0-9]{16}\z/)
     end
 
     context "with edge case inputs" do
       it "handles empty query string" do
-        fp = described_class.fingerprint(query: "", location: ["test.rb:1"])
-        expect(fp).to be_a(String)
-        expect(fp.length).to eq(16)
-      end
-
-      it "handles empty location array" do
-        fp = described_class.fingerprint(query: "SELECT 1", location: [])
-        expect(fp).to be_a(String)
-        expect(fp.length).to eq(16)
-      end
-
-      it "handles string location instead of array" do
-        fp = described_class.fingerprint(query: "SELECT 1", location: "test.rb:1")
-        expect(fp).to be_a(String)
-        expect(fp.length).to eq(16)
-      end
-
-      it "handles nil location" do
-        fp = described_class.fingerprint(query: "SELECT 1", location: nil)
+        fp = described_class.fingerprint(query: "")
         expect(fp).to be_a(String)
         expect(fp.length).to eq(16)
       end
 
       it "handles very long query string" do
         long_query = "SELECT " + ("col#{rand(1000)}, " * 1000) + "FROM very_long_table"
-        fp = described_class.fingerprint(query: long_query, location: ["test.rb:1"])
+        fp = described_class.fingerprint(query: long_query)
         expect(fp).to be_a(String)
         expect(fp.length).to eq(16)
       end
 
       it "handles unicode characters in query" do
-        fp = described_class.fingerprint(query: "SELECT * FROM users WHERE name = '日本語'", location: ["test.rb:1"])
+        fp = described_class.fingerprint(query: "SELECT * FROM users WHERE name = '日本語'")
         expect(fp).to be_a(String)
         expect(fp.length).to eq(16)
       end
 
       it "handles special characters in query" do
-        fp = described_class.fingerprint(query: "SELECT * FROM users WHERE data = '{\"key\": \"value\"}'", location: ["test.rb:1"])
+        fp = described_class.fingerprint(query: "SELECT * FROM users WHERE data = '{\"key\": \"value\"}'")
         expect(fp).to be_a(String)
         expect(fp.length).to eq(16)
       end
 
       it "handles newlines in query" do
-        fp = described_class.fingerprint(query: "SELECT *\nFROM users\nWHERE id = 1", location: ["test.rb:1"])
+        fp = described_class.fingerprint(query: "SELECT *\nFROM users\nWHERE id = 1")
         expect(fp).to be_a(String)
         expect(fp.length).to eq(16)
       end
-
-      it "handles multiple locations (call stack)" do
-        locations = [
-          "app/models/user.rb:10",
-          "app/controllers/users_controller.rb:20",
-          "app/views/users/index.html.erb:5"
-        ]
-        fp = described_class.fingerprint(query: "SELECT 1", location: locations)
-        expect(fp).to be_a(String)
-        expect(fp.length).to eq(16)
-      end
-
-      it "generates different fingerprints for different location order" do
-        # Use identity filter to bypass Rails.backtrace_cleaner
-        ProsopiteTodo.configure do |c|
-          c.location_filter = ->(frames) { frames }
-          c.max_location_frames = nil
-        end
-
-        fp1 = described_class.fingerprint(query: "SELECT 1", location: ["a.rb:1", "b.rb:2"])
-        fp2 = described_class.fingerprint(query: "SELECT 1", location: ["b.rb:2", "a.rb:1"])
-        expect(fp1).not_to eq(fp2)
-      end
-    end
-
-    context "with test_location" do
-      it "generates different fingerprint for same query with different test_location" do
-        fp1 = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: "spec/a_spec.rb")
-        fp2 = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: "spec/b_spec.rb")
-        expect(fp1).not_to eq(fp2)
-      end
-
-      it "generates same fingerprint for same query, location, and test_location" do
-        fp1 = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: "spec/a_spec.rb")
-        fp2 = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: "spec/a_spec.rb")
-        expect(fp1).to eq(fp2)
-      end
-
-      it "handles nil test_location" do
-        fp = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: nil)
-        expect(fp).to be_a(String)
-        expect(fp.length).to eq(16)
-      end
-    end
-  end
-
-  describe ".legacy_fingerprint" do
-    it "generates fingerprint without test_location" do
-      fp = described_class.legacy_fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
-      expect(fp).to be_a(String)
-      expect(fp.length).to eq(16)
-    end
-
-    it "generates consistent fingerprint" do
-      fp1 = described_class.legacy_fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
-      fp2 = described_class.legacy_fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
-      expect(fp1).to eq(fp2)
-    end
-
-    it "differs from new fingerprint format (with test_location)" do
-      # Legacy fingerprint has format "query|location"
-      # New fingerprint has format "query|location|test_location" (even when nil)
-      # They should be different to support backward compatibility checking
-      legacy_fp = described_class.legacy_fingerprint(query: "SELECT 1", location: ["test.rb:1"])
-      new_fp = described_class.fingerprint(query: "SELECT 1", location: ["test.rb:1"], test_location: nil)
-      expect(legacy_fp).not_to eq(new_fp)
     end
   end
 
@@ -274,9 +190,9 @@ RSpec.describe ProsopiteTodo::Scanner do
       end
     end
 
-    context "when todo file has matching fingerprint" do
+    context "when todo file has matching location" do
       before do
-        fp = described_class.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+        fp = described_class.fingerprint(query: "SELECT * FROM users")
         todo_file.add_entry(
           fingerprint: fp,
           query: "SELECT * FROM users",
@@ -307,7 +223,7 @@ RSpec.describe ProsopiteTodo::Scanner do
 
     context "with multiple locations for same query" do
       before do
-        fp = described_class.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+        fp = described_class.fingerprint(query: "SELECT * FROM users")
         todo_file.add_entry(
           fingerprint: fp,
           query: "SELECT * FROM users",
@@ -346,12 +262,12 @@ RSpec.describe ProsopiteTodo::Scanner do
         expect(result.keys.first).to eq(["SELECT * FROM users WHERE id = ?", "SELECT * FROM users WHERE id = ?"])
       end
 
-      it "filters Prosopite format when fingerprint matches" do
+      it "filters Prosopite format when location matches" do
         call_stack = [
           "app/models/user.rb:10",
           "app/controllers/users_controller.rb:20"
         ]
-        fp = described_class.fingerprint(query: "SELECT * FROM users WHERE id = ?", location: call_stack)
+        fp = described_class.fingerprint(query: "SELECT * FROM users WHERE id = ?")
         todo_file.add_entry(
           fingerprint: fp,
           query: "SELECT * FROM users WHERE id = ?",
@@ -402,7 +318,7 @@ RSpec.describe ProsopiteTodo::Scanner do
 
       described_class.record_notifications(notifications, todo_file)
 
-      expected_fp = described_class.fingerprint(query: "SELECT * FROM users", location: ["app/models/user.rb:10"])
+      expected_fp = described_class.fingerprint(query: "SELECT * FROM users")
       expect(todo_file.fingerprints).to include(expected_fp)
     end
 
@@ -414,7 +330,7 @@ RSpec.describe ProsopiteTodo::Scanner do
     end
 
     context "with multiple locations for same query" do
-      it "creates separate entries for each location" do
+      it "creates single entry with multiple locations" do
         notifications = {
           "SELECT * FROM users" => [
             ["app/models/user.rb:10"],
@@ -424,8 +340,10 @@ RSpec.describe ProsopiteTodo::Scanner do
 
         described_class.record_notifications(notifications, todo_file)
 
-        expect(todo_file.entries.length).to eq(2)
-        locations = todo_file.entries.map { |e| e["location"] }
+        expect(todo_file.entries.length).to eq(1)
+        entry = todo_file.entries.first
+        expect(entry["locations"].length).to eq(2)
+        locations = entry["locations"].map { |loc| loc["location"] }
         expect(locations).to include("app/models/user.rb:10")
         expect(locations).to include("app/controllers/users_controller.rb:20")
       end
@@ -442,12 +360,12 @@ RSpec.describe ProsopiteTodo::Scanner do
         described_class.record_notifications(notifications, todo_file)
 
         entry = todo_file.entries.first
-        expect(entry["location"]).to eq("app/models/user.rb:10 -> app/controllers/users_controller.rb:20")
+        expect(entry["locations"].first["location"]).to eq("app/models/user.rb:10 -> app/controllers/users_controller.rb:20")
       end
     end
 
     context "with duplicate notifications" do
-      it "does not add duplicate entries" do
+      it "does not add duplicate locations" do
         notifications = {
           "SELECT * FROM users" => [["app/models/user.rb:10"]]
         }
@@ -456,6 +374,7 @@ RSpec.describe ProsopiteTodo::Scanner do
         described_class.record_notifications(notifications, todo_file)
 
         expect(todo_file.entries.length).to eq(1)
+        expect(todo_file.entries.first["locations"].length).to eq(1)
       end
     end
 
@@ -495,7 +414,7 @@ RSpec.describe ProsopiteTodo::Scanner do
       end
     end
 
-    it "returns a Set of fingerprints from notifications" do
+    it "returns a Set of fingerprints from notifications (one per query)" do
       notifications = {
         "SELECT * FROM users" => [["app/models/user.rb:10"], ["app/models/user.rb:20"]]
       }
@@ -503,10 +422,11 @@ RSpec.describe ProsopiteTodo::Scanner do
       result = described_class.extract_fingerprints(notifications)
 
       expect(result).to be_a(Set)
-      expect(result.length).to eq(2)
+      # Same query = same fingerprint, so only 1 unique fingerprint
+      expect(result.length).to eq(1)
     end
 
-    it "includes fingerprints for all locations" do
+    it "includes fingerprints for all queries" do
       notifications = {
         "SELECT * FROM users" => [["file1.rb:1"]],
         "SELECT * FROM posts" => [["file2.rb:2"]]
@@ -514,8 +434,8 @@ RSpec.describe ProsopiteTodo::Scanner do
 
       result = described_class.extract_fingerprints(notifications)
 
-      fp1 = described_class.fingerprint(query: "SELECT * FROM users", location: ["file1.rb:1"])
-      fp2 = described_class.fingerprint(query: "SELECT * FROM posts", location: ["file2.rb:2"])
+      fp1 = described_class.fingerprint(query: "SELECT * FROM users")
+      fp2 = described_class.fingerprint(query: "SELECT * FROM posts")
 
       expect(result).to include(fp1)
       expect(result).to include(fp2)
@@ -563,7 +483,8 @@ RSpec.describe ProsopiteTodo::Scanner do
         described_class.record_notifications(notifications, todo_file)
 
         entry = todo_file.entries.first
-        frames = entry["location"].split(" -> ")
+        location_str = entry["locations"].first["location"]
+        frames = location_str.split(" -> ")
         expect(frames.length).to eq(3)
       end
 
@@ -577,7 +498,8 @@ RSpec.describe ProsopiteTodo::Scanner do
         described_class.record_notifications(notifications, todo_file)
 
         entry = todo_file.entries.first
-        frames = entry["location"].split(" -> ")
+        location_str = entry["locations"].first["location"]
+        frames = location_str.split(" -> ")
         expect(frames.length).to eq(app_stack.length)
       end
 
@@ -590,7 +512,8 @@ RSpec.describe ProsopiteTodo::Scanner do
         described_class.record_notifications(notifications, todo_file)
 
         entry = todo_file.entries.first
-        frames = entry["location"].split(" -> ")
+        location_str = entry["locations"].first["location"]
+        frames = location_str.split(" -> ")
         expect(frames.length).to eq(5)
       end
     end
@@ -614,8 +537,9 @@ RSpec.describe ProsopiteTodo::Scanner do
         described_class.record_notifications(notifications, todo_file)
 
         entry = todo_file.entries.first
+        location_str = entry["locations"].first["location"]
         # Without any filtering, frames should be joined with " -> "
-        expect(entry["location"]).to include("app/models/user.rb:10")
+        expect(location_str).to include("app/models/user.rb:10")
       end
     end
 
@@ -651,7 +575,7 @@ RSpec.describe ProsopiteTodo::Scanner do
         described_class.record_notifications(notifications, todo_file)
 
         entry = todo_file.entries.first
-        expect(entry["location"]).to eq("app/models/user.rb:42:in `some_method'")
+        expect(entry["locations"].first["location"]).to eq("app/models/user.rb:42:in `some_method'")
       end
     end
 
@@ -675,7 +599,8 @@ RSpec.describe ProsopiteTodo::Scanner do
         described_class.record_notifications(notifications, todo_file)
 
         entry = todo_file.entries.first
-        frames = entry["location"].split(" -> ")
+        location_str = entry["locations"].first["location"]
+        frames = location_str.split(" -> ")
         expect(frames.length).to eq(2)
         expect(frames).to all(include("app/"))
       end
@@ -690,39 +615,41 @@ RSpec.describe ProsopiteTodo::Scanner do
         described_class.record_notifications(notifications, todo_file)
 
         entry = todo_file.entries.first
-        frames = entry["location"].split(" -> ")
+        location_str = entry["locations"].first["location"]
+        frames = location_str.split(" -> ")
         expect(frames.length).to eq(1)
       end
     end
 
     context "fingerprint consistency with filtering" do
-      it "generates consistent fingerprints after filtering" do
+      it "generates consistent fingerprints (now based on query only)" do
         ProsopiteTodo.configure do |c|
           c.location_filter = ->(frames) { frames }
           c.max_location_frames = 2
         end
 
-        fp1 = described_class.fingerprint(query: "SELECT * FROM users", location: app_stack)
-        fp2 = described_class.fingerprint(query: "SELECT * FROM users", location: app_stack)
+        fp1 = described_class.fingerprint(query: "SELECT * FROM users")
+        fp2 = described_class.fingerprint(query: "SELECT * FROM users")
 
         expect(fp1).to eq(fp2)
       end
 
-      it "generates different fingerprints with different filter settings" do
+      it "generates same fingerprints regardless of filter settings (query-based)" do
         ProsopiteTodo.configure do |c|
           c.location_filter = ->(frames) { frames }
           c.max_location_frames = 2
         end
-        fp1 = described_class.fingerprint(query: "SELECT * FROM users", location: app_stack)
+        fp1 = described_class.fingerprint(query: "SELECT * FROM users")
 
         ProsopiteTodo.reset_configuration!
         ProsopiteTodo.configure do |c|
           c.location_filter = ->(frames) { frames }
           c.max_location_frames = 3
         end
-        fp2 = described_class.fingerprint(query: "SELECT * FROM users", location: app_stack)
+        fp2 = described_class.fingerprint(query: "SELECT * FROM users")
 
-        expect(fp1).not_to eq(fp2)
+        # Fingerprint is now based only on query, so they should be equal
+        expect(fp1).to eq(fp2)
       end
     end
 
@@ -738,7 +665,7 @@ RSpec.describe ProsopiteTodo::Scanner do
         expect { described_class.record_notifications(notifications, todo_file) }.not_to raise_error
 
         entry = todo_file.entries.first
-        expect(entry["location"]).to eq("app/test.rb:1 -> app/test.rb:2")
+        expect(entry["locations"].first["location"]).to eq("app/test.rb:1 -> app/test.rb:2")
       end
 
       it "outputs warning when filter raises error" do
@@ -765,7 +692,7 @@ RSpec.describe ProsopiteTodo::Scanner do
         expect { described_class.record_notifications(notifications, todo_file) }.not_to raise_error
 
         entry = todo_file.entries.first
-        expect(entry["location"]).to eq("app/test.rb:1 -> app/test.rb:2")
+        expect(entry["locations"].first["location"]).to eq("app/test.rb:1 -> app/test.rb:2")
       end
 
       it "outputs warning when filter returns non-array" do
@@ -792,7 +719,7 @@ RSpec.describe ProsopiteTodo::Scanner do
         expect { described_class.record_notifications(notifications, todo_file) }.not_to raise_error
 
         entry = todo_file.entries.first
-        expect(entry["location"]).to eq("app/test.rb:1")
+        expect(entry["locations"].first["location"]).to eq("app/test.rb:1")
       end
     end
   end
