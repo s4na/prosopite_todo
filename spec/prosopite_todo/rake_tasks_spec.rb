@@ -269,46 +269,46 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
         expect(reloaded.entries.length).to eq(0)
       end
     end
+  end
 
-    describe ".clean_enabled?" do
-      after do
-        ENV.delete("PROSOPITE_TODO_CLEAN")
-      end
+  describe ".clean_enabled?" do
+    after do
+      ENV.delete("PROSOPITE_TODO_CLEAN")
+    end
 
-      it "returns true when PROSOPITE_TODO_CLEAN is not set (default)" do
-        ENV.delete("PROSOPITE_TODO_CLEAN")
-        expect(described_class.clean_enabled?).to be true
-      end
+    it "returns true when PROSOPITE_TODO_CLEAN is not set (default)" do
+      ENV.delete("PROSOPITE_TODO_CLEAN")
+      expect(described_class.clean_enabled?).to be true
+    end
 
-      it "returns true when PROSOPITE_TODO_CLEAN is '1'" do
-        ENV["PROSOPITE_TODO_CLEAN"] = "1"
-        expect(described_class.clean_enabled?).to be true
-      end
+    it "returns true when PROSOPITE_TODO_CLEAN is '1'" do
+      ENV["PROSOPITE_TODO_CLEAN"] = "1"
+      expect(described_class.clean_enabled?).to be true
+    end
 
-      it "returns true when PROSOPITE_TODO_CLEAN is 'true'" do
-        ENV["PROSOPITE_TODO_CLEAN"] = "true"
-        expect(described_class.clean_enabled?).to be true
-      end
+    it "returns true when PROSOPITE_TODO_CLEAN is 'true'" do
+      ENV["PROSOPITE_TODO_CLEAN"] = "true"
+      expect(described_class.clean_enabled?).to be true
+    end
 
-      it "returns true when PROSOPITE_TODO_CLEAN is 'yes'" do
-        ENV["PROSOPITE_TODO_CLEAN"] = "yes"
-        expect(described_class.clean_enabled?).to be true
-      end
+    it "returns true when PROSOPITE_TODO_CLEAN is 'yes'" do
+      ENV["PROSOPITE_TODO_CLEAN"] = "yes"
+      expect(described_class.clean_enabled?).to be true
+    end
 
-      it "returns false when PROSOPITE_TODO_CLEAN is '0'" do
-        ENV["PROSOPITE_TODO_CLEAN"] = "0"
-        expect(described_class.clean_enabled?).to be false
-      end
+    it "returns false when PROSOPITE_TODO_CLEAN is '0'" do
+      ENV["PROSOPITE_TODO_CLEAN"] = "0"
+      expect(described_class.clean_enabled?).to be false
+    end
 
-      it "returns false when PROSOPITE_TODO_CLEAN is 'false'" do
-        ENV["PROSOPITE_TODO_CLEAN"] = "false"
-        expect(described_class.clean_enabled?).to be false
-      end
+    it "returns false when PROSOPITE_TODO_CLEAN is 'false'" do
+      ENV["PROSOPITE_TODO_CLEAN"] = "false"
+      expect(described_class.clean_enabled?).to be false
+    end
 
-      it "returns false when PROSOPITE_TODO_CLEAN is 'no'" do
-        ENV["PROSOPITE_TODO_CLEAN"] = "no"
-        expect(described_class.clean_enabled?).to be false
-      end
+    it "returns false when PROSOPITE_TODO_CLEAN is 'no'" do
+      ENV["PROSOPITE_TODO_CLEAN"] = "no"
+      expect(described_class.clean_enabled?).to be false
     end
   end
 
