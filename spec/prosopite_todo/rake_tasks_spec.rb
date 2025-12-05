@@ -516,4 +516,111 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
       expect(reloaded.entries.length).to eq(0)
     end
   end
+
+  describe ".run" do
+    it "shows message and returns false when no test locations exist" do
+      result = described_class.run(output: output)
+
+      expect(output.string).to include("No test locations found")
+      expect(result).to be false
+    end
+
+    it "runs rspec with test locations from todo file using array form" do
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+      todo_file.add_entry(
+        fingerprint: "abc123",
+        query: "SELECT * FROM users",
+        location: "app/models/user.rb:10",
+        test_location: "spec/models/user_spec.rb"
+      )
+      todo_file.add_entry(
+        fingerprint: "def456",
+        query: "SELECT * FROM posts",
+        location: "app/models/post.rb:20",
+        test_location: "spec/models/post_spec.rb"
+      )
+      todo_file.save
+
+      # Mock system call to avoid actually running tests
+      allow(described_class).to receive(:system).and_return(true)
+
+      result = described_class.run(output: output)
+
+      expect(output.string).to include("Running 2 test(s)")
+      expect(output.string).to include("PROSOPITE_TODO_UPDATE=1 bundle exec rspec")
+      expect(output.string).to include("spec/models/user_spec.rb")
+      expect(output.string).to include("spec/models/post_spec.rb")
+      # Verify array form of system call is used (shell injection safe)
+      expect(described_class).to have_received(:system).with(
+        { "PROSOPITE_TODO_UPDATE" => "1" },
+        "bundle", "exec", "rspec",
+        "spec/models/user_spec.rb", "spec/models/post_spec.rb"
+      )
+      expect(result).to be true
+    end
+
+    it "deduplicates test locations" do
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+      # Same test file for different locations
+      todo_file.add_entry(
+        fingerprint: "abc123",
+        query: "SELECT * FROM users",
+        location: "app/models/user.rb:10",
+        test_location: "spec/models/user_spec.rb"
+      )
+      todo_file.add_entry(
+        fingerprint: "def456",
+        query: "SELECT * FROM posts",
+        location: "app/models/post.rb:20",
+        test_location: "spec/models/user_spec.rb"
+      )
+      todo_file.save
+
+      allow(described_class).to receive(:system).and_return(true)
+
+      described_class.run(output: output)
+
+      expect(output.string).to include("Running 1 test(s)")
+    end
+
+    it "returns false and outputs message when tests fail" do
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+      todo_file.add_entry(
+        fingerprint: "abc123",
+        query: "SELECT * FROM users",
+        location: "app/models/user.rb:10",
+        test_location: "spec/models/user_spec.rb"
+      )
+      todo_file.save
+
+      allow(described_class).to receive(:system).and_return(false)
+
+      result = described_class.run(output: output)
+
+      expect(output.string).to include("Tests failed")
+      expect(result).to be false
+    end
+
+    it "handles test locations with spaces safely" do
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+      todo_file.add_entry(
+        fingerprint: "abc123",
+        query: "SELECT * FROM users",
+        location: "app/models/user.rb:10",
+        test_location: "spec/models/user spec.rb"
+      )
+      todo_file.save
+
+      allow(described_class).to receive(:system).and_return(true)
+
+      described_class.run(output: output)
+
+      # Array form of system handles spaces correctly without shell escaping
+      expect(described_class).to have_received(:system).with(
+        { "PROSOPITE_TODO_UPDATE" => "1" },
+        "bundle", "exec", "rspec",
+        "spec/models/user spec.rb"
+      )
+    end
+  end
 end

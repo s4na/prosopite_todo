@@ -86,6 +86,29 @@ module ProsopiteTodo
 
         output.puts "Cleaned #{todo_file.path}: removed #{removed_count} locations, #{todo_file.entries.length} entries remaining"
       end
+
+      def run(output: $stdout)
+        todo_file = ProsopiteTodo::TodoFile.new(ProsopiteTodo.todo_file_path)
+        test_locations = todo_file.test_locations
+
+        if test_locations.empty?
+          output.puts "No test locations found in #{todo_file.path}"
+          return false
+        end
+
+        output.puts "Running #{test_locations.size} test(s) from #{todo_file.path}..."
+        test_files = test_locations.to_a
+        output.puts "Executing: PROSOPITE_TODO_UPDATE=1 bundle exec rspec #{test_files.join(' ')}"
+
+        # Use array form of system to avoid shell injection vulnerabilities
+        success = system({ "PROSOPITE_TODO_UPDATE" => "1" }, "bundle", "exec", "rspec", *test_files)
+
+        unless success
+          output.puts "Tests failed (exit code: #{$CHILD_STATUS&.exitstatus})"
+        end
+
+        success
+      end
     end
   end
 end
