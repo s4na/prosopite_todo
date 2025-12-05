@@ -93,17 +93,21 @@ module ProsopiteTodo
 
         if test_locations.empty?
           output.puts "No test locations found in #{todo_file.path}"
-          return
+          return false
         end
 
         output.puts "Running #{test_locations.size} test(s) from #{todo_file.path}..."
-        test_files = test_locations.to_a.join(" ")
+        test_files = test_locations.to_a
+        output.puts "Executing: PROSOPITE_TODO_UPDATE=1 bundle exec rspec #{test_files.join(' ')}"
 
-        # Execute rspec with PROSOPITE_TODO_UPDATE=1 to auto-update the TODO file
-        command = "PROSOPITE_TODO_UPDATE=1 bundle exec rspec #{test_files}"
-        output.puts "Executing: #{command}"
+        # Use array form of system to avoid shell injection vulnerabilities
+        success = system({ "PROSOPITE_TODO_UPDATE" => "1" }, "bundle", "exec", "rspec", *test_files)
 
-        system(command)
+        unless success
+          output.puts "Tests failed (exit code: #{$CHILD_STATUS&.exitstatus})"
+        end
+
+        success
       end
     end
   end
