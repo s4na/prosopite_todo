@@ -27,30 +27,63 @@ module ProsopiteTodo
     end
 
     def ignored?(fingerprint)
-      fingerprints.include?(fingerprint) || legacy_fingerprints.include?(fingerprint)
+      fingerprints.include?(fingerprint)
     end
 
-    # Legacy fingerprints for backward compatibility
-    # Entries without test_location use old fingerprint format (query|location)
-    # We need to check both old and new format to avoid duplicate entries
-    # Note: Not memoized because entries can be modified by filter_by_test_locations! or add_entry
-    def legacy_fingerprints
-      entries
-        .select { |e| e["test_location"].nil? || e["test_location"].to_s.strip.empty? }
-        .map { |e| e["fingerprint"] }
+    # Check if a specific location is already in the entry for a fingerprint
+    # @param fingerprint [String] the entry fingerprint
+    # @param location [String] the normalized location string
+    # @return [Boolean] true if location already exists
+    def location_exists?(fingerprint, location)
+      entry = find_entry(fingerprint)
+      return false unless entry
+
+      entry["locations"]&.any? { |loc| loc["location"] == location }
     end
 
+    # Find entry by fingerprint
+    # @param fingerprint [String] the entry fingerprint
+    # @return [Hash, nil] the entry or nil
+    def find_entry(fingerprint)
+      entries.find { |e| e["fingerprint"] == fingerprint }
+    end
+
+    # Add a new entry or add location to existing entry
+    # @param fingerprint [String] the entry fingerprint (based on query only)
+    # @param query [String] the normalized SQL query
+    # @param location [String] the normalized location string
+    # @param test_location [String, nil] the test file location
     def add_entry(fingerprint:, query:, location: nil, test_location: nil)
-      return if ignored?(fingerprint)
+      existing = find_entry(fingerprint)
 
-      entry = {
-        "fingerprint" => fingerprint,
-        "query" => query,
+      if existing
+        # Add location to existing entry if not already present
+        add_location_to_entry(existing, location, test_location)
+      else
+        # Create new entry
+        entry = {
+          "fingerprint" => fingerprint,
+          "query" => query,
+          "locations" => [],
+          "created_at" => Time.now.utc.iso8601
+        }
+        add_location_to_entry(entry, location, test_location)
+        entries << entry
+      end
+    end
+
+    private def add_location_to_entry(entry, location, test_location)
+      return if location.nil?
+
+      # Check if this location already exists
+      existing_loc = entry["locations"]&.find { |loc| loc["location"] == location }
+      return if existing_loc
+
+      entry["locations"] ||= []
+      entry["locations"] << {
         "location" => location,
-        "test_location" => test_location,
-        "created_at" => Time.now.utc.iso8601
+        "test_location" => test_location
       }
-      entries << entry
     end
 
     def save
@@ -70,34 +103,54 @@ module ProsopiteTodo
       original_count - @entries.length
     end
 
-    # Filter entries by test locations - only removes entries for tests that were run
+    # Filter entries by test locations - removes locations for tests that were run but no longer detect N+1
     # Entries for tests that were NOT run are preserved
-    # @param fingerprints [Set] set of fingerprints detected in current run
+    # @param detected_locations [Set<Hash>] set of detected location hashes {fingerprint:, location:, test_location:}
     # @param test_locations [Set] set of test locations that were run
-    # @return [Integer] number of removed entries
-    def filter_by_test_locations!(fingerprints, test_locations)
-      original_count = entries.length
-      @entries = entries.select do |entry|
-        entry_test_loc = entry["test_location"]
+    # @return [Integer] number of removed locations (across all entries)
+    def filter_by_test_locations!(detected_locations, test_locations)
+      removed_count = 0
 
-        if entry_test_loc.nil? || entry_test_loc.to_s.empty?
-          # Legacy entries without test_location - keep them (conservative)
-          true
-        elsif test_locations.include?(entry_test_loc)
-          # This entry's test was run - keep only if still detected
-          fingerprints.include?(entry["fingerprint"])
-        else
-          # This entry's test was NOT run - preserve it
-          true
-        end
+      entries.each do |entry|
+        original_location_count = entry["locations"]&.length || 0
+
+        entry["locations"] = entry["locations"]&.select do |loc|
+          loc_test = loc["test_location"]
+
+          if loc_test.nil? || loc_test.to_s.empty?
+            # Locations without test_location - keep them (conservative)
+            true
+          elsif test_locations.include?(loc_test)
+            # This location's test was run - keep only if still detected
+            # Note: We intentionally match only fingerprint + location, not test_location.
+            # The same location can be detected by multiple tests, and we want to keep
+            # the location if it's detected by ANY test, not just the original one.
+            detected_locations.any? do |det|
+              det[:fingerprint] == entry["fingerprint"] &&
+                det[:location] == loc["location"]
+            end
+          else
+            # This location's test was NOT run - preserve it
+            true
+          end
+        end || []
+
+        removed_count += original_location_count - entry["locations"].length
       end
-      original_count - @entries.length
+
+      # Remove entries with no locations
+      @entries = entries.reject { |e| e["locations"].empty? }
+
+      removed_count
     end
 
     # Get all unique test locations in the TODO file
     # @return [Set] set of test locations
     def test_locations
-      Set.new(entries.map { |e| e["test_location"] }.compact.reject(&:empty?))
+      locations = entries.flat_map do |entry|
+        entry["locations"]&.map { |loc| loc["test_location"] } || []
+      end
+      Set.new(locations.compact.reject(&:empty?))
     end
 
     private

@@ -2,6 +2,7 @@
 
 require "tempfile"
 require "fileutils"
+require "securerandom"
 
 RSpec.describe ProsopiteTodo do
   it "has a version number" do
@@ -73,6 +74,30 @@ RSpec.describe ProsopiteTodo do
       )
       notifications = ProsopiteTodo.pending_notifications["SELECT * FROM users"]
       expect(notifications.first[:test_location]).to eq("spec/models/user_spec.rb")
+    end
+
+    it "handles nil test_location in pending_notifications" do
+      # This tests the branch at line 40 where loc[:test_location] is nil
+      # We need to set up the notification before the mocks so the auto-detection doesn't kick in
+      original_test_location = ProsopiteTodo.current_test_location
+      begin
+        ProsopiteTodo.current_test_location = nil
+        # Add notification with explicit nil test_location, but auto-detection is still possible
+        # We need to use a different approach: directly set pending_notifications
+        ProsopiteTodo.instance_variable_get(:@mutex).synchronize do
+          ProsopiteTodo.instance_variable_set(:@pending_notifications, {
+            "SELECT * FROM users" => [
+              { call_stack: ["app/models/user.rb:10"], test_location: nil }
+            ]
+          })
+        end
+
+        notifications = ProsopiteTodo.pending_notifications["SELECT * FROM users"]
+        # The test_location should be nil (testing the &.dup branch)
+        expect(notifications.first[:test_location]).to be_nil
+      ensure
+        ProsopiteTodo.current_test_location = original_test_location
+      end
     end
   end
 
@@ -147,15 +172,20 @@ RSpec.describe ProsopiteTodo do
 
     it "tracks registered test locations" do
       # Note: RSpec integration registers current test automatically
+      # Use unique test locations to avoid conflicts
+      unique_id = SecureRandom.hex(4)
+      test_loc1 = "spec/models/unique_#{unique_id}_user_spec.rb:10"
+      test_loc2 = "spec/models/unique_#{unique_id}_post_spec.rb:20"
+
       initial_size = ProsopiteTodo.executed_test_locations.size
 
-      ProsopiteTodo.register_executed_test("spec/models/user_spec.rb:10")
-      ProsopiteTodo.register_executed_test("spec/models/post_spec.rb:20")
+      ProsopiteTodo.register_executed_test(test_loc1)
+      ProsopiteTodo.register_executed_test(test_loc2)
 
       # Line numbers are normalized away
       locations = ProsopiteTodo.executed_test_locations
-      expect(locations).to include("spec/models/user_spec.rb")
-      expect(locations).to include("spec/models/post_spec.rb")
+      expect(locations).to include("spec/models/unique_#{unique_id}_user_spec.rb")
+      expect(locations).to include("spec/models/unique_#{unique_id}_post_spec.rb")
       expect(locations.size).to be >= initial_size + 2
     end
 
@@ -304,10 +334,12 @@ RSpec.describe ProsopiteTodo do
       )
 
       result = ProsopiteTodo.update_todo!
-      expect(result[:added]).to eq(2)
+      # 1 entry added (same query), with 2 locations
+      expect(result[:added]).to eq(1)
 
       todo_file = ProsopiteTodo::TodoFile.new(todo_path)
-      expect(todo_file.entries.length).to eq(2)
+      expect(todo_file.entries.length).to eq(1)
+      expect(todo_file.entries.first["locations"].length).to eq(2)
     end
 
     it "handles call stack locations" do
@@ -320,7 +352,7 @@ RSpec.describe ProsopiteTodo do
 
       todo_file = ProsopiteTodo::TodoFile.new(todo_path)
       entry = todo_file.entries.first
-      expect(entry["location"]).to include("->")
+      expect(entry["locations"].first["location"]).to include("->")
     end
 
     it "clears pending notifications after successful save" do

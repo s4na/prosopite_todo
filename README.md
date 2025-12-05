@@ -173,7 +173,7 @@ This is useful for incrementally adding known N+1 queries to your TODO file as y
 
 ## How it works
 
-1. **Fingerprinting**: Each N+1 query is identified by a fingerprint based on the SQL query and its call stack location
+1. **Fingerprinting**: Each N+1 query is identified by a fingerprint based on the normalized SQL query only (not location). This allows grouping multiple code locations that trigger the same N+1 query under a single entry.
 2. **Filtering**: When Prosopite detects N+1 queries, ProsopiteTodo filters out any that match entries in `.prosopite_todo.yaml`
 3. **Persistence**: The TODO file is a human-readable YAML file that can be committed to version control
 
@@ -183,11 +183,17 @@ This is useful for incrementally adding known N+1 queries to your TODO file as y
 ---
 - fingerprint: "a1b2c3d4e5f67890"
   query: SELECT "users".* FROM "users" WHERE "users"."id" = $1
-  location: app/models/post.rb:10 -> app/controllers/posts_controller.rb:5
+  locations:
+    - location: app/models/post.rb:10 -> app/controllers/posts_controller.rb:5
+      test_location: spec/models/post_spec.rb
   created_at: "2024-01-15T10:30:00Z"
 - fingerprint: "0987654321fedcba"
   query: SELECT "comments".* FROM "comments" WHERE "comments"."post_id" = $1
-  location: app/models/comment.rb:20 -> app/views/posts/show.html.erb:15
+  locations:
+    - location: app/models/comment.rb:20 -> app/views/posts/show.html.erb:15
+      test_location: spec/views/posts/show_spec.rb
+    - location: app/controllers/comments_controller.rb:8
+      test_location: spec/controllers/comments_controller_spec.rb
   created_at: "2024-01-15T10:30:00Z"
 ```
 
@@ -256,6 +262,35 @@ filtered = ProsopiteTodo::Scanner.filter_notifications(prosopite_notifications, 
 ProsopiteTodo::Scanner.record_notifications(notifications, todo_file)
 todo_file.save
 ```
+
+## Breaking Changes
+
+### v0.1.13: locations array format
+
+**Breaking Change**: The `.prosopite_todo.yaml` file format has changed.
+
+**Old format** (v0.1.12 and earlier):
+```yaml
+- fingerprint: "abc123"
+  query: "SELECT * FROM users"
+  location: "app/models/user.rb:10"
+  test_location: "spec/models/user_spec.rb"
+```
+
+**New format** (v0.1.13+):
+```yaml
+- fingerprint: "abc123"
+  query: "SELECT * FROM users"
+  locations:
+    - location: "app/models/user.rb:10"
+      test_location: "spec/models/user_spec.rb"
+```
+
+**Migration guide**:
+1. Delete your existing `.prosopite_todo.yaml` file
+2. Re-run `bundle exec rake prosopite_todo:generate` to create a new file in the updated format
+
+This change allows grouping multiple code locations that trigger the same N+1 query under a single entry.
 
 ## Development
 

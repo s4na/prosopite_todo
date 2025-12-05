@@ -100,11 +100,15 @@ RSpec.describe ProsopiteTodo::TodoFile do
           ---
           - fingerprint: "abc123"
             query: "SELECT * FROM users"
-            location: "app/models/user.rb:10"
+            locations:
+              - location: "app/models/user.rb:10"
+                test_location: null
             created_at: "2024-01-01T00:00:00Z"
           - fingerprint: "def456"
             query: "SELECT * FROM posts"
-            location: "app/models/post.rb:20"
+            locations:
+              - location: "app/models/post.rb:20"
+                test_location: null
             created_at: "2024-01-01T00:00:00Z"
         YAML
       end
@@ -127,8 +131,10 @@ RSpec.describe ProsopiteTodo::TodoFile do
         ---
         - fingerprint: "abc123"
           query: "SELECT * FROM users"
+          locations: []
         - fingerprint: "def456"
           query: "SELECT * FROM posts"
+          locations: []
       YAML
     end
 
@@ -144,6 +150,7 @@ RSpec.describe ProsopiteTodo::TodoFile do
         ---
         - fingerprint: "abc123"
           query: "SELECT * FROM users"
+          locations: []
       YAML
     end
 
@@ -159,7 +166,7 @@ RSpec.describe ProsopiteTodo::TodoFile do
   end
 
   describe "#add_entry" do
-    it "adds a new entry to the file" do
+    it "adds a new entry with location to the file" do
       todo_file = described_class.new(todo_file_path)
 
       todo_file.add_entry(
@@ -171,15 +178,27 @@ RSpec.describe ProsopiteTodo::TodoFile do
       expect(todo_file.entries.length).to eq(1)
       expect(todo_file.entries[0]["fingerprint"]).to eq("new123")
       expect(todo_file.entries[0]["query"]).to eq("SELECT * FROM comments")
+      expect(todo_file.entries[0]["locations"].first["location"]).to eq("app/models/comment.rb:5")
     end
 
-    it "does not add duplicate fingerprints" do
+    it "adds location to existing entry with same fingerprint" do
       todo_file = described_class.new(todo_file_path)
 
-      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1")
-      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1")
+      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1", location: "file1.rb:1")
+      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1", location: "file2.rb:2")
 
       expect(todo_file.entries.length).to eq(1)
+      expect(todo_file.entries[0]["locations"].length).to eq(2)
+    end
+
+    it "does not add duplicate locations" do
+      todo_file = described_class.new(todo_file_path)
+
+      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1", location: "file1.rb:1")
+      todo_file.add_entry(fingerprint: "dup123", query: "SELECT 1", location: "file1.rb:1")
+
+      expect(todo_file.entries.length).to eq(1)
+      expect(todo_file.entries[0]["locations"].length).to eq(1)
     end
   end
 
@@ -282,6 +301,18 @@ RSpec.describe ProsopiteTodo::TodoFile do
 
       expect(todo_file.test_locations).to eq(Set.new(["spec/a_spec.rb"]))
     end
+
+    it "handles entries with nil locations array" do
+      # This tests the branch at line 151 where entry["locations"] is nil
+      File.write(todo_file_path, <<~YAML)
+        ---
+        - fingerprint: "fp1"
+          query: "SELECT 1"
+      YAML
+
+      todo_file = described_class.new(todo_file_path)
+      expect(todo_file.test_locations).to eq(Set.new)
+    end
   end
 
   describe "#filter_by_fingerprints!" do
@@ -336,6 +367,108 @@ RSpec.describe ProsopiteTodo::TodoFile do
       todo_file.filter_by_fingerprints!(fingerprints)
 
       expect(todo_file.entries[0]["created_at"]).to eq(original_created_at)
+    end
+  end
+
+  describe "#filter_by_test_locations!" do
+    let(:todo_file) { described_class.new(todo_file_path) }
+
+    it "handles entries with nil locations array" do
+      # This tests the branch at line 115 and 117 where entry["locations"] is nil
+      File.write(todo_file_path, <<~YAML)
+        ---
+        - fingerprint: "fp1"
+          query: "SELECT 1"
+      YAML
+
+      todo_file = described_class.new(todo_file_path)
+      detected_locations = Set.new
+      test_locations = Set.new(["spec/test_spec.rb"])
+
+      # Should not raise error
+      removed_count = todo_file.filter_by_test_locations!(detected_locations, test_locations)
+      # Entry with nil locations is removed (becomes empty array, then entry is removed)
+      expect(removed_count).to eq(0)
+      expect(todo_file.entries.length).to eq(0)
+    end
+
+    it "handles entries with empty locations array" do
+      File.write(todo_file_path, <<~YAML)
+        ---
+        - fingerprint: "fp1"
+          query: "SELECT 1"
+          locations: []
+      YAML
+
+      todo_file = described_class.new(todo_file_path)
+      detected_locations = Set.new
+      test_locations = Set.new(["spec/test_spec.rb"])
+
+      removed_count = todo_file.filter_by_test_locations!(detected_locations, test_locations)
+      expect(removed_count).to eq(0)
+      # Entry with empty locations is removed
+      expect(todo_file.entries.length).to eq(0)
+    end
+  end
+
+  describe "#location_exists?" do
+    let(:todo_file) { described_class.new(todo_file_path) }
+
+    it "returns false when entry does not exist" do
+      expect(todo_file.location_exists?("nonexistent", "some/location")).to be false
+    end
+
+    it "returns falsey when entry exists but locations is nil" do
+      # This tests the branch at line 41 where entry["locations"] is nil
+      File.write(todo_file_path, <<~YAML)
+        ---
+        - fingerprint: "fp1"
+          query: "SELECT 1"
+          locations: null
+      YAML
+
+      todo_file = described_class.new(todo_file_path)
+      expect(todo_file.location_exists?("fp1", "some/location")).to be_falsey
+    end
+
+    it "returns true when location exists" do
+      todo_file.add_entry(fingerprint: "fp1", query: "SELECT 1", location: "app/test.rb:10")
+      expect(todo_file.location_exists?("fp1", "app/test.rb:10")).to be true
+    end
+
+    it "returns false when location does not exist" do
+      todo_file.add_entry(fingerprint: "fp1", query: "SELECT 1", location: "app/test.rb:10")
+      expect(todo_file.location_exists?("fp1", "app/other.rb:20")).to be false
+    end
+  end
+
+  describe "#add_entry" do
+    let(:todo_file) { described_class.new(todo_file_path) }
+
+    context "when adding to entry with nil locations" do
+      it "initializes locations array when nil" do
+        # This tests the branch at line 79 and 82 where entry["locations"] is nil
+        File.write(todo_file_path, <<~YAML)
+          ---
+          - fingerprint: "fp1"
+            query: "SELECT 1"
+        YAML
+
+        todo_file = described_class.new(todo_file_path)
+        todo_file.add_entry(fingerprint: "fp1", query: "SELECT 1", location: "new/location.rb:5")
+
+        entry = todo_file.entries.first
+        expect(entry["locations"]).not_to be_nil
+        expect(entry["locations"].length).to eq(1)
+        expect(entry["locations"].first["location"]).to eq("new/location.rb:5")
+      end
+    end
+
+    it "handles nil location parameter" do
+      # This tests the early return at line 76
+      todo_file.add_entry(fingerprint: "fp1", query: "SELECT 1", location: nil)
+      entry = todo_file.entries.first
+      expect(entry["locations"]).to eq([])
     end
   end
 end
