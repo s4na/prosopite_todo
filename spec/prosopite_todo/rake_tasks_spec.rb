@@ -245,6 +245,29 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
         queries = reloaded.entries.map { |e| e["query"] }
         expect(queries).to contain_exactly("SELECT * FROM posts", "SELECT * FROM comments")
       end
+
+      it "uses executed_test_locations when available (non-empty)" do
+        # This tests the branch at line 30 where executed_test_locations is NOT empty
+        todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+        fp = ProsopiteTodo::Scanner.fingerprint(query: "SELECT * FROM users")
+        todo_file.add_entry(
+          fingerprint: fp,
+          query: "SELECT * FROM users",
+          location: "app/models/user.rb:10",
+          test_location: "spec/models/user_spec.rb"
+        )
+        todo_file.save
+
+        # Register test location explicitly (simulating RSpec integration)
+        ProsopiteTodo.register_executed_test("spec/models/user_spec.rb:10")
+
+        # No notifications from this test (N+1 was fixed)
+        described_class.update(output: output, clean: true)
+
+        reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
+        # Entry should be removed because the test ran but detected no N+1
+        expect(reloaded.entries.length).to eq(0)
+      end
     end
 
     describe ".clean_enabled?" do
@@ -438,6 +461,59 @@ RSpec.describe ProsopiteTodo::TaskHelpers do
       # 1 entry (SELECT * FROM users) with 2 locations, old entry removed
       expect(reloaded.entries.length).to eq(1)
       expect(reloaded.entries.first["locations"].length).to eq(2)
+    end
+
+    it "uses executed_test_locations when available (non-empty)" do
+      # This tests the branch at line 81 where executed_test_locations is NOT empty
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+      todo_file.add_entry(
+        fingerprint: "remove123",
+        query: "SELECT * FROM old_table",
+        location: "app/models/old.rb:5",
+        test_location: test_location
+      )
+      todo_file.save
+
+      # Register test location explicitly (simulating RSpec integration)
+      ProsopiteTodo.register_executed_test(test_location)
+
+      # No pending notifications (N+1 was fixed)
+      described_class.clean(output: output)
+
+      expect(output.string).to include("removed 1 locations")
+      reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
+      expect(reloaded.entries.length).to eq(0)
+    end
+
+    it "falls back to extract_test_locations when executed_test_locations is empty" do
+      # This tests the branch at line 82 where executed_test_locations is empty
+      # Clear executed_test_locations to simulate Rake task context (not RSpec)
+      ProsopiteTodo.clear_executed_test_locations
+
+      todo_file = ProsopiteTodo::TodoFile.new(todo_file_path)
+      todo_file.add_entry(
+        fingerprint: "old123",
+        query: "SELECT * FROM old_table",
+        location: "app/models/old.rb:5",
+        test_location: test_location
+      )
+      todo_file.save
+
+      # Add notification from the same test (triggering test location extraction)
+      ProsopiteTodo.add_pending_notification(
+        query: "SELECT * FROM users",
+        locations: [["app/models/user.rb:10"]],
+        test_location: test_location
+      )
+
+      # Clear again to ensure executed_test_locations is empty when clean runs
+      ProsopiteTodo.clear_executed_test_locations
+
+      described_class.clean(output: output)
+
+      expect(output.string).to include("removed 1 locations")
+      reloaded = ProsopiteTodo::TodoFile.new(todo_file_path)
+      expect(reloaded.entries.length).to eq(0)
     end
   end
 end

@@ -449,6 +449,43 @@ RSpec.describe ProsopiteTodo::Scanner do
     end
   end
 
+  describe ".extract_test_locations" do
+    before do
+      ProsopiteTodo.configure do |c|
+        c.location_filter = ->(frames) { frames }
+      end
+    end
+
+    it "returns empty set when all locations have nil test_location" do
+      # This tests the branch at line 146 where normalized is nil
+      notifications = {
+        "SELECT * FROM users" => [
+          { call_stack: ["app/models/user.rb:10"], test_location: nil },
+          { call_stack: ["app/models/user.rb:20"], test_location: nil }
+        ]
+      }
+
+      result = described_class.extract_test_locations(notifications)
+
+      expect(result).to be_a(Set)
+      expect(result).to be_empty
+    end
+
+    it "excludes nil and empty test locations" do
+      notifications = {
+        "SELECT * FROM users" => [
+          { call_stack: ["app/models/user.rb:10"], test_location: "spec/user_spec.rb" },
+          { call_stack: ["app/models/user.rb:20"], test_location: nil },
+          { call_stack: ["app/models/user.rb:30"], test_location: "" }
+        ]
+      }
+
+      result = described_class.extract_test_locations(notifications)
+
+      expect(result).to eq(Set.new(["spec/user_spec.rb"]))
+    end
+  end
+
   describe "location filtering" do
     let(:todo_file) { ProsopiteTodo::TodoFile.new(todo_file_path) }
 
@@ -515,6 +552,22 @@ RSpec.describe ProsopiteTodo::Scanner do
         location_str = entry["locations"].first["location"]
         frames = location_str.split(" -> ")
         expect(frames.length).to eq(5)
+      end
+
+      it "includes all frames when set to 0 (no limit)" do
+        # This tests the branch at line 201 where max_frames is 0 (falsy positive check)
+        ProsopiteTodo.configure do |c|
+          c.location_filter = ->(frames) { frames }
+          c.max_location_frames = 0
+        end
+
+        notifications = { "SELECT * FROM users" => [app_stack] }
+        described_class.record_notifications(notifications, todo_file)
+
+        entry = todo_file.entries.first
+        location_str = entry["locations"].first["location"]
+        frames = location_str.split(" -> ")
+        expect(frames.length).to eq(app_stack.length)
       end
     end
 
