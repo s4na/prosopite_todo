@@ -22,4 +22,9 @@ namespace :prosopite_todo do
   task :clean do
     ProsopiteTodo::TaskHelpers.clean
   end
+
+  desc "Run only tests recorded in .prosopite_todo.yaml and update the file"
+  task :run do
+    ProsopiteTodo::TaskHelpers.run
+  end
 end

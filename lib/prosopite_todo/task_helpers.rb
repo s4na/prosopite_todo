@@ -86,6 +86,25 @@ module ProsopiteTodo
 
         output.puts "Cleaned #{todo_file.path}: removed #{removed_count} locations, #{todo_file.entries.length} entries remaining"
       end
+
+      def run(output: $stdout)
+        todo_file = ProsopiteTodo::TodoFile.new(ProsopiteTodo.todo_file_path)
+        test_locations = todo_file.test_locations
+
+        if test_locations.empty?
+          output.puts "No test locations found in #{todo_file.path}"
+          return
+        end
+
+        output.puts "Running #{test_locations.size} test(s) from #{todo_file.path}..."
+        test_files = test_locations.to_a.join(" ")
+
+        # Execute rspec with PROSOPITE_TODO_UPDATE=1 to auto-update the TODO file
+        command = "PROSOPITE_TODO_UPDATE=1 bundle exec rspec #{test_files}"
+        output.puts "Executing: #{command}"
+
+        system(command)
+      end
     end
   end
 end
