@@ -262,6 +262,35 @@ todo_file.save
 - Ruby 2.7 以上
 - Rails 6.0 以上
 
+## 破壊的変更
+
+### v0.1.13: locations 配列フォーマット
+
+**破壊的変更**: `.prosopite_todo.yaml` ファイルのフォーマットが変更されました。
+
+**旧フォーマット** (v0.1.12 以前):
+```yaml
+- fingerprint: "abc123"
+  query: "SELECT * FROM users"
+  location: "app/models/user.rb:10"
+  test_location: "spec/models/user_spec.rb"
+```
+
+**新フォーマット** (v0.1.13+):
+```yaml
+- fingerprint: "abc123"
+  query: "SELECT * FROM users"
+  locations:
+    - location: "app/models/user.rb:10"
+      test_location: "spec/models/user_spec.rb"
+```
+
+**移行ガイド**:
+1. 既存の `.prosopite_todo.yaml` ファイルを削除してください
+2. `bundle exec rake prosopite_todo:generate` を再実行して、新しいフォーマットでファイルを作成してください
+
+この変更により、同じ N+1 クエリを発生させる複数のコード位置を1つのエントリにまとめることができます。
+
 ## 開発
 
 リポジトリをチェックアウト後、以下を実行してください：

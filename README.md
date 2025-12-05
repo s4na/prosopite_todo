@@ -263,6 +263,35 @@ ProsopiteTodo::Scanner.record_notifications(notifications, todo_file)
 todo_file.save
 ```
 
+## Breaking Changes
+
+### v0.1.13: locations array format
+
+**Breaking Change**: The `.prosopite_todo.yaml` file format has changed.
+
+**Old format** (v0.1.12 and earlier):
+```yaml
+- fingerprint: "abc123"
+  query: "SELECT * FROM users"
+  location: "app/models/user.rb:10"
+  test_location: "spec/models/user_spec.rb"
+```
+
+**New format** (v0.1.13+):
+```yaml
+- fingerprint: "abc123"
+  query: "SELECT * FROM users"
+  locations:
+    - location: "app/models/user.rb:10"
+      test_location: "spec/models/user_spec.rb"
+```
+
+**Migration guide**:
+1. Delete your existing `.prosopite_todo.yaml` file
+2. Re-run `bundle exec rake prosopite_todo:generate` to create a new file in the updated format
+
+This change allows grouping multiple code locations that trigger the same N+1 query under a single entry.
+
 ## Development
 
 After checking out the repo, run:
